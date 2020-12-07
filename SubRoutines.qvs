@@ -1,0 +1,725 @@
+TRACE *** INCLUDE: $(vScriptPath)SubRoutines.qvs *** ;
+
+REM Change Log:  ;
+
+/* SUB-ROUTINES:
+
+	1)	DropTemp_TablesANDFields
+	2)	StoreDropAllTables ()
+	3)	MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,parMappingField1,parMappingField2)
+	4)	DropAllTables(parTableExceptions_PIPE_Delimited)
+	5)	QVDFilterDate(parScriptLoadStatementSubName,parQVDStartDate,parQVDEndDate,parQVDDateField_Name,parQVDDateField_NUMorDateFormat)
+	6)	QVDFilterField(parScriptLoadStatementSubName,parQVDFilterONField_Name,parQVDFieldFilters_PIPE_Delimited)
+	7)	QVDFileNamesList(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles)
+	8)	QVDFileNamesLoad(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles,parOPTIONALsubName)
+	9)	DistinctFieldValues(parField)
+	10)	DatesToBeFilled(parDateFieldRequiringFill,parDESC_or_ASC_Date_Ordering)
+	11) QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
+	999) QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
+
+	*/
+/* 1) DropTemp_TablesANDFields 
+ * Sub routine to drop all temporary tables and fields from a document.
+ * Please note, temporary tables and fields to be dropped are the ones whose name starts with the suffix '_temp' case insensitive.
+ */
+
+SUB DropTemp_TablesANDFields
+
+	TRACE ***SUB: DropTemp_TablesANDFields *** ;
+	
+	LET i = 0;
+	DO WHILE i < NoOfTables()
+		LET vTable = TableName (i);
+		IF LOWER (RIGHT (vTable, 5)) = '_temp' THEN
+			DROP TABLE $(vTable);
+		ELSE 
+			LET a = 1;
+			DO WHILE a <= NoOfFields ('$(vTable)')
+				LET vField = '[' & FieldName (a, '$(vTable)') & ']';
+				IF LOWER (RIGHT (vField, 6)) = '_temp]' THEN
+					DROP FIELD $(vField);
+				ELSE	
+					LET a = a + 1;
+				ENDIF
+			LOOP
+			LET i = i + 1;
+		ENDIF
+	LOOP
+
+//CLEAN-UP
+	LET i = ;
+	LET a = ;
+	LET vTable = ;
+	LET vField = ;
+
+ENDSUB
+
+
+/* 2) StoreDropAllTables ()
+ * Sub routine to Store  AND Drop all current tables
+ * Takes 1 parameter: vStorePrefix to be set with the name of the transform, example: 'SBI-Ratings'
+ */
+
+SUB StoreDropAllTables (vStorePrefix)
+
+	TRACE ***SUB: StoreDropAllNetTables *** ;
+	
+	LET vTableList = ;
+	
+	FOR i = 0 TO NoOfTables() - 1
+		
+		LET vTable = TableName (i);
+		LET vTableList = vTableList & CHR (39) & vTable & CHR (39) & ',' ;
+				
+	NEXT
+	
+	LET vTableList = LEFT (vTableList, LEN (vTableList) - 1) ; //GB: Removes last ','
+	
+	FOR EACH vTable IN $(vTableList)
+	
+		TRACE STORE "$(vTable)" INTO [$(QVDataPath)SBI\$(vStorePrefix)$(vTable).qvd];
+		STORE "$(vTable)" INTO [$(QVDataPath)SBI\$(vStorePrefix)$(vTable).qvd];
+		
+		DROP TABLE [$(vTable)];
+	
+	NEXT
+	
+	//CLEAN UP
+	LET vTable = ;
+	LET vTableList = ;
+
+ENDSUB
+
+
+// 3) MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,parMappingField1,parMappingField2)
+/*<------------------- SUB: Optimised Mapping tables from QVD file -------------------*/
+/*
+EXAMPLE of sub's CALL statement:
+The following will make a mapping table called 'Hello_World_Map'
+CALL MappingFromQVD('lib://QVDATA/RatingUniverse/QVDs/Level1','SF_ALLDATE_NOTCH_DEFAULTS_WDFLAG','Hello_World_Map','IRD_KEY','RATING_TYPE_DESCRIPTION');
+
+Since in the following there is not explicitly named mapping table, the resulting mapping table will be the 'QVDName_Map',
+i.e. ('DATACHECK_Map')
+CALL MappingFromQVD('lib://QVDATA/Core Data','DATACHECK','','DC_NCKNM','DC_CNTRY_NM');
+_______________________
+Rationale:
+_______________________
+This sub script is to ensure that if a MAPPING table is loaded from a 'large' QVD (defined below as having more than 100,000	
+rows of data), then the loading of the table will go via a temp table. Otherwise, it will load directly from QVD.
+This sub-routine ensures that as a QVD  size grows it will automatically toggle to an optimised load as the QVD reaches over 100,000 rows.
+
+sub-routine parameters:
+parQVDTargetFolder				--> the LIB connection to the folder holding the QVD
+parQVDName						--> the QVD name itself (don't add the extension -".qvd"- in this parameter.
+parMappingTableName_Optional	--> Add a MAPPING Table name for when you call it with an ApplyMap(). If this parameter is
+									undefined (you leave it as ''), then the mapping table will use the parameter "parQVDName" and
+                                    call the table nale"parQVDName_Map".
+parMappingField1				--> The name of the first (VLOOKUP) field in the mapping table as it is in the source QVD.
+parMappingField2				--> The name of the second field in the mapping table as it is in the source QVD.
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	29 August 2020
+*/
+sub MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,parMappingField1,parMappingField2)
+
+//Checking the number of records in the underlying QVD to establish whether greater than 100,000 or not.
+Mapping_NoofRecords: LOAD QvdNoOfRecords('$(parQVDTargetFolder)/$(parQVDName).qvd') as Mapping_NoofRecords AUTOGENERATE(1);
+LET vMapping_NoofRecords = PEEK('Mapping_NoofRecords', 0, 'Mapping_NoofRecords');
+DROP TABLE Mapping_NoofRecords;
+
+//Create a unique identifier to add to mapping field name, just in case, to prevent potential automatic mapping table concatenation.
+LET vUniqueIDSuffix = SUBFIELD(ROUND(FRAC(NOW()), 0.000001), '0.', 2);
+
+//Setting the MAPPING table name if it has been defined in "parMappingTableName_Optional". If is was left blank (i.e. '', then the
+//script will automatically take the "parQVDName" and append '_Map' as a suffix.
+IF LEN(TRIM('$(parMappingTableName_Optional)')) > 0 THEN
+	SET vMappingTableName = '$(parMappingTableName_Optional)';
+ELSE
+	SET vMappingTableName = '$(parQVDName)_Map';
+END IF;
+
+//ACTUAL LOAD STATEMENT  --> If the underlying QVD has more than 100,000 rows of data, it will load via a temp table.
+IF $(vMapping_NoofRecords) > 100000 THEN
+	TRACE *** There are "$(vMapping_NoofRecords)" in underlying "$(parQVDName)" QVD --> Loading via Temp table. ***;
+	//First load in super-fast load-mode into a temp table
+	Temp:
+    LOAD
+    	[$(parMappingField1)],
+        [$(parMappingField2)]
+	FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD);
+    
+    //Then reload into a MAPPING table, 'iff' the mapping table was NOT named as a sub parameter, then when needs to be called for is "parQVDName_Map"
+    [$(vMappingTableName)]:
+    MAPPING LOAD DISTINCT
+    		[$(parMappingField1)] as [X1_$(vUniqueIDSuffix)],
+            [$(parMappingField2)] as [X2_$(vUniqueIDSuffix)]
+	RESIDENT Temp;
+    
+    DROP TABLE Temp;
+ELSE
+	TRACE *** There are "$(vMapping_NoofRecords)" in underlying "$(parQVDName)" QVD --> Loading directly from QVD. ***;
+	[$(vMappingTableName)]:
+    MAPPING LOAD
+    		[$(parMappingField1)] as [X1_$(vUniqueIDSuffix)],
+            [$(parMappingField2)] as [X2_$(vUniqueIDSuffix)]
+	FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD);
+END IF;
+
+end sub;
+
+
+// 4) DropAllTables(parTableExceptions_PIPE_Delimited)
+/*<------------------- SUB: Drop ALL Tables with PIPE-delimited exceptions -------------------*/
+/*
+EXAMPLE of sub's CALL statement:
+The following will drop all tables except 'Table 1' and 'Temp Table 2'.
+CALL DropAllTables('Table1|Temp Table 2');
+
+The following will just drop all tables, no exceptions:
+CALL DropAllTables;
+
+_______________________
+Rationale:
+_______________________
+Mainly used for ETL scripts, where all tables need to be dropped in order to decrease files size (due to errant data/tables).
+
+sub-routine parameters:
+parTableExceptions_PIPE_Delimited	--> Pipe-delimit a list of table you do  NOT want to drop.
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	3 September 2020
+*/
+
+sub DropAllTables(parTableExceptions_PIPE_Delimited)
+	LET vAllTables = NoOfTables();
+		FOR zz=0 to $(vAllTables)-1
+    		CurrentTableNamesTemp: LOAD TableName($(zz)) as CurrentTableName AUTOGENERATE(1);
+		NEXT zz;
+	LET vTableExceptions = CHR(39) & REPLACE('$(parTableExceptions_PIPE_Delimited)', '|', CHR(39) & ',' & CHR(39)) & CHR(39);
+	
+    IF ALT($(vAllTables), 0) > 0 THEN
+        CurrentTableNames: LOAD CurrentTableName as CurrentTableNames RESIDENT CurrentTableNamesTemp WHERE MATCH(CurrentTableName, $(vTableExceptions)) = 0;
+        DROP TABLE CurrentTableNamesTemp;
+
+        FOR yy=1 TO NoOfRows('CurrentTableNames')
+            LET vCurrentTableNames = PEEK('CurrentTableNames', $(yy)-1, 'CurrentTableNames');
+            TRACE *** Dropping Table "$(vCurrentTableNames)";
+            DROP TABLE [$(vCurrentTableNames)];
+        NEXT yy;
+
+        DROP TABLE CurrentTableNames;
+	END IF;
+end sub;
+
+
+// 5) QVDFilterDate(parScriptLoadStatementSubName,parQVDStartDate,parQVDEndDate,parQVDDateField_Name,parQVDDateField_NUMorDateFormat)
+/*<------------------- SUB: Loading from LARGE QVD whilst filtering on Dates -------------------*/
+/*
+EXAMPLE of sub's CALL statement:
+
+The following will filter out date values in a QVD, as opposed to a standard WHERE-clause on the same date field.
+CALL QVDFilterDate('HelloWorld','MAKEDATE(2019,1,1)','TODAY()','User_Date','YYYY-MM-DD');
+
+_______________________
+Rationale:
+_______________________
+This sub script is mimimise load time from a LARGE QVD when you need to filter on a date field (NOTE: the underlying field
+in the QVD must NOT be a Date-Time stamp, only a DATE. Furthermore, this sub will not work on 'garbage data', i.e. if the
+underyling date-field has multiple date formats in it. The date format should be standardised across the whole column.
+
+sub-routine parameters:
+parScriptLoadStatementSubName	--> In your script, encapsulate your load statement into a sub-routine which will then be
+									referenced in this sub-routine.
+									The load-statement should be written as e.g.
+									"sub MyLoadSubName
+									LOAD [... --> fields WITHOUT transformations] FROM [lib://....qvd] (QVD)
+									WHERE EXISTS([fieldname_you_want_to_filter_dates_on]);
+									end sub;".
+parQVDStartDate					--> The starting/lowest date for which you want to load data. This can be a function or a VAR
+									created generated in your script, e.g. MAKEDATE(2015,7,14) if you want to load data from
+									14th July 2015 onward OR $(vMyMaxDate_AsANumber) where you want to load from a variable that
+									generated somewhere previously in your script and which MUST contain a NUMBER due to the 
+									'Support' table format in this sub routine.
+parQVDEndDate					--> The ending/highest date for which you want to load data. The logic is the same as for the
+									"parQVDStartDate" stated just above.
+parQVDDateField_Name			--> The name of the dat field in the QVD that you want to filter on. NOTE: this must be the same 
+									fieldname as mentioned above in the load statement (i.e. "fieldname_you_want_to_filter_dates_on").
+parQVDDateField_NUMorDateFormat	--> Can contain 2 'toggles': either 'NUM' if the date field in the underlying QVD is stored as a 
+									NUMBER or the date-format in which is stored, e.g. 'YYYY-MM-DD'  or 'DD-MMM-YY'.
+
+Here is a short example script:
+sub HelloWorld
+	MyData:
+	LOAD User_Date, User_Agent_ID
+	FROM [lib://QVDATA/SBI_QlikSense/SBI-Transform-FC_User_ID_Agent_ID_Mappings.qvd] (QVD)
+	WHERE EXISTS(User_Date);
+end sub;
+
+CALL QVDFilterDate('HelloWorld','MAKEDATE(2019,1,1)','TODAY()','User_Date','YYYY-MM-DD');
+
+The above, using the sub routine herein, would go significantly faster than direct filtering:
+MyData:
+LOAD
+	User_Date, User_Agent_ID
+FROM [lib://QVDATA/SBI_QlikSense/SBI-Transform-FC_User_ID_Agent_ID_Mappings.qvd] (QVD)
+WHERE User_Date >= MAKEDATE(2019,1,1)
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	2 September 2020
+*/
+sub QVDFilterDate(parScriptLoadStatementSubName,parQVDStartDate,parQVDEndDate,parQVDDateField_Name,parQVDDateField_NUMorDateFormat)
+
+//Establish from the sub's parameters whether to return the supporting date values as a NUM or as a Date() and in which format.
+IF UPPER('$(parQVDDateFieldNUMorDateFormat)') = 'NUM' THEN
+	SET vFunction = 'NUM';
+    SET vFunctionParameter = '';
+ELSE
+	SET vFunction = 'Date';
+    LET vFunctionParameter = ',' & CHR(39) & '$(parQVDDateField_NUMorDateFormat)' & CHR(39);
+END IF;
+
+//Generate a Support table with dates where the date fieldname is set as the same as in the QVD table/file you want to load from.
+SupportTemp:
+LOAD
+	$(vFunction)($(parQVDStartDate) + ROWNO()-1 $(vFunctionParameter)) as [$(parQVDDateField_Name)]
+AUTOGENERATE(NUM($(parQVDEndDate)) - NUM($(parQVDStartDate))+1);
+
+/*
+Call for the load statement that:
+1.	You have created and encapsulated in a 'sub' routine.
+2.	The load statement from QVD should be based on a 'date field' and therefore you must include a trailing
+	"Where EXISTS("parQVDDateField_Name");". Note that this where exists is on the same fieldname you use as the
+	"parQVDDateField_Name" parameter in this sub-routine.
+*/
+//This is the load statement you have created in your script and encapsulated in a sub that is being CALLed.
+CALL $(parScriptLoadStatementSubName);
+
+//Drop the support table
+DROP TABLE SupportTemp;
+
+end sub;
+
+
+// 6) QVDFilterField(parScriptLoadStatementSubName,parQVDFilterONField_Name,parQVDFieldFilters_PIPE_Delimited)
+/*<------------------- SUB: Loading from LARGE QVD whilst filtering on Field's values -------------------*/
+/*
+EXAMPLE of sub's CALL statement:
+-
+The following will filter out values in a QVD as opposed to a standard WHERE-clause on the same field.
+CALL QVDFilterField('HelloWorld','Delivery_Channel','FC Web|Excel Add-In');
+
+_______________________
+Rationale:
+_______________________
+This sub script is to mimimise load time from a LARGE QVD when you need to filter on a field's values.
+
+As a test, the following results were found when loading from a LARGE QVD.
+As always, the benefits are ‘YMMV’ because they depend quite largely on QVD/table-depth (no. of columns),
+field-cardinality (no. of duplicate values) and server resources availability at that moment in time (CPU, RAM etc.).
+
+From a QVD containing ~28.25 million rows, fetches ~25.5 million rows of data:
+In 6 mins 20 secs with a "WHERE Field = 'X' OR Field = 'Y'"
+In 1 mins 58 secs with a "WHERE MATCH(Field,'X','Y')"
+In 32 secs using a support table, which is the key of this sub-routine.
+
+*** <------ KEEP IN MIND: ------> ***
+1.	In the load statement from QVD, make sure you include the field for the WHERE(EXISTS()) clause, otherwise it will NOT load
+	in super-fast load mode.
+2.	This load script sub-routine is based on a "WHERE(EXISTS(ONE_FIELD))". Be wary of whether there are MORE values
+	of the "ONE_FIELD" in question at the time you are loading this sub-routine. The EXISTS() function is based on ALL  the values in 
+	that field at THAT moment in time.
+
+sub-routine parameters:
+parScriptLoadStatementSubName		--> In your script, encapsulate your load statement into a sub-routine which will then be
+										referenced in this sub-routine.
+										*** NOTE: 
+											1. Make sure you include the WHERE(EXISTS(field_name)) in your load statement.
+ 											2.	Don't make ANY transformations in this section (apart from aliasing). Keep all
+												transformations to a RESIDENT load after having loaded in from the QVD.
+
+										The load-statement should be written as e.g.
+										"sub MyLoadSubName
+										LOAD [... --> fields WITHOUT transformations] FROM [lib://....qvd] (QVD)
+										WHERE EXISTS([fieldname_you_want_to_filter_dates_on]);
+										end sub;".
+parQVDFilterONField_Name			--> Is the fieldname in the QVD upon which you want to filter data.  This is the same fieldname
+										as stated immediately above as "[fieldname_you_want_to_filter_dates_on]".
+parQVDFieldFilters_PIPE_Delimited	--> You can put in one field value or pipe-delimit multiple values, e.g. either 'FC Web' if you
+										want rows of data referring to 'FC Web' only, or 'FC Web|Excel Add-In' if you
+										want rows of data referring to 'FC Web' and 'Excel Add-In' only.
+
+Here is a short example script:
+sub HelloWorld
+	MyData:
+	LOAD
+		Usage_Agent_ID,
+		Time_Spent,
+		Session_ID,
+		Delivery_Channel
+	FROM [lib://QVDATA/SBI_QlikSense/SBI-Transform-FC_Usage_Combined.qvd](qvd)
+	WHERE EXISTS(Delivery_Channel);
+end sub;
+
+CALL QVDFilterField('HelloWorld','Delivery_Channel','FC Web|Excel Add-In');
+
+The above, using the sub routine herein, would go significantly faster than direct filtering, as per Test results stated above.
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	2 September 2020
+*/
+
+sub QVDFilterField(parScriptLoadStatementSubName,parQVDFilterONField_Name,parQVDFieldFilters_PIPE_Delimited)
+
+//Create support table with all the field values required
+SupportTemp:
+LOAD
+	SUBFIELD('$(parQVDFieldFilters_PIPE_Delimited)', '|') as [$(parQVDFilterONField_Name)]
+AUTOGENERATE(1);
+
+/*
+Call for the load statement that:
+1.	You have created and encapsulated in a 'sub' routine.
+2.	The load statement from QVD should be based on one field' and therefore you must include
+	a trailing "Where EXISTS("parQVDFilterONField_Name");". Note that this where exists is on the same
+    fieldname you use as the "parQVDFilterONField_Name" parameter in this sub-routine.
+*/
+CALL $(parScriptLoadStatementSubName);
+
+//Drop the support table
+DROP TABLE SupportTemp;
+end sub;
+
+
+// 7) QVDFileNamesList(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles)
+/*<------ SUB: Load Last 'N' YYYYMM-suffixed "QVDFileNamesList" QVDs from a folder and into a "QVDFileNamesList" support table ------>*/
+/*
+EXAMPLE of sub's CALL statement:
+CALL QVDFileNamesList('lib://QVDATA/SBI_QlikSense/dev_temp','SBI-Extract-FC_User_Group','1');
+
+_______________________
+Rationale:
+_______________________
+Based on the assumption that you have created a QVD file system that stores data into YYYYMM slices, this script calls for the 
+last 'N' slices into a support table that can be used for further purposes.
+
+sub-routine parameters:
+parQVDTargetFolder	--> Folder holding the QVDs in question.
+parQVDNamePrefix	--> the set file name prefix before the "_YYYYMM" filename suffix.
+parLoadLastNFiles	--> Load the last N periods, reverse chronologically.
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	12 September 2020
+*/
+sub QVDFileNamesList(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles)
+
+FOR EACH File IN FileList('$(parQVDTargetFolder)/$(parQVDNamePrefix)_*.qvd')
+	FileList_Temp: LOAD '$(File)' as FileList AUTOGENERATE(1);
+NEXT File;
+QVDFileNamesList:
+NOCONCATENATE FIRST $(parLoadLastNFiles)
+LOAD
+	QVDFileNamesList,
+	SUBFIELD(SUBFIELD(QVDFileNamesListNUM_Temp, '_', SUBSTRINGCOUNT(QVDFileNamesListNUM_Temp, '_')+1), '.qvd', 1) as QVDFileNamesListNUM
+;
+LOAD 
+	FileList as QVDFileNamesList,
+	SUBFIELD(FileList, '/', SUBSTRINGCOUNT(FileList, '/')+1) as QVDFileNamesListNUM_Temp
+RESIDENT FileList_Temp ORDER BY FileList DESC;
+DROP TABLE FileList_Temp;
+end sub;
+
+
+// 8) QVDFileNamesLoad(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles,parOPTIONALsubName)
+/*<------ SUB: Load Last 'N' YYYYMM-suffixed "QVDFileNamesList" QVDs from a folder ------>*/
+/*
+EXAMPLE of sub's CALL statement:
+
+sub User_Group_Temp
+    User_Group_Temp: User_Group_ID, Extract_Date FROM [$(vQVDFileNamesList)] (QVD);
+end sub;
+
+CALL QVDFileNamesLoad('lib://QVDATA/SBI_QlikSense/dev_temp','SBI-Extract-FC_User_Group','1','User_Group_Temp');
+
+_______________________
+Rationale:
+_______________________
+Based on the assumption that you have created a QVD file system that stores data into YYYYMM slices, this script calls for the 
+last 'N' slices into a support table that can be used for further purposes.
+**** N.B. The table of data loaded will be called "QVDFileNamesLoad", unless you call it otherwise in a preceding-sub (look at
+explanation of "parOPTIONALsubName" parameter below).
+
+sub-routine parameters:
+parQVDTargetFolder	--> Folder holding the QVDs in question.
+parQVDNamePrefix	--> the set file name prefix before the "_YYYYMM" filename suffix.
+parLoadLastNFiles	--> Load the last N periods, reverse chronologically.
+parOPTIONALsubName  --> If you don't want "load *" and want only a restricted amount of fields, create a
+                        sub preceding this CALL with the fields called for in the load statement.
+                        The "from"  source must be mentioned as "FROM [$(vQVDFileNamesList)] (QVD);".
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	25 October 2020
+*/
+sub QVDFileNamesLoad(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles,parOPTIONALsubName)
+
+    CALL QVDFileNamesList('$(parQVDTargetFolder)','$(parQVDNamePrefix)','$(parLoadLastNFiles)');
+
+    FOR i=1 TO NoofRows('QVDFileNamesList')
+        LET vQVDFileNamesList = PEEK('QVDFileNamesList', $(i)-1, 'QVDFileNamesList');
+            IF TRIM(LEN('$(parOPTIONALsubName)')) > 0 THEN
+                CALL $(parOPTIONALsubName);
+            ELSE
+                QVDFileNamesLoad: LOAD * FROM [$(vQVDFileNamesList)] (QVD);
+            END IF;
+    NEXT i;
+    DROP TABLE QVDFileNamesList;
+end sub;
+
+
+// 9) DistinctFieldValues(parField)
+/*<------ SUB: Quickly load all distinctive values in a field without using a distinct load statement. ------>*/
+/*
+EXAMPLE of sub's CALL statement:
+CALL DistinctFieldValues('User_Status');
+
+_______________________
+Rationale:
+_______________________
+Appropriate for getting distinct value in a large table, rather than using LOAD DISTINCT
+
+sub-routine parameters:
+parField	--> Field for which you want 
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	18 September 2020
+*/
+sub DistinctFieldValues(parField)
+	FOR Each FieldValue in FieldValueList('$(parField)')
+		DistinctFieldValues: LOAD '$(FieldValue)' as DistinctFieldValues AUTOGENERATE(1);
+	NEXT FieldValue;
+end sub;
+
+
+// 10) DatesToBeFilled(parDateFieldRequiringFill)
+/*<------ SUB: Fill-in a missing Date value from the previous existing Date-value available in a table/QVD you have loaded in. ------>*/
+/*
+EXAMPLE of sub's CALL statement:
+CALL DatesToBeFilled('User_Extract_Date');
+
+_______________________
+Rationale:
+_______________________
+In the case that there is date of data missing, you can use this sub to generate a table which will tell you where you should fill the data from.
+If the date data is missing on the last date of month, this table will return the first date of the next month, assuming that it exists.
+
+This table (called "DatesToBeFilled" like the sub-name) will generate 3 columns of data:
+"DatesToBeFilled" which gives you the date of missing data.
+"DatesToBeFilledFrom" which gives you the date of the next-date available data that you have and where you should be substituting from.
+"DatesToBeFilledFrom_YYYYMM" which gives you the date of the next-YYYYMM-date available data that you have and where you should be substituting from,
+in case you need to call for a YYYYMM QVD with this field.
+
+sub-routine parameters:
+parDateFieldRequiringFill			--> Date field you want to check for missing data and find the cloest "next-day" substitute for.
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	11 November 2020
+*/
+
+sub DatesToBeFilled(parDateFieldRequiringFill,parDESC_or_ASC_Date_Ordering)
+    CALL DistinctFieldValues('$(parDateFieldRequiringFill)');
+
+    //Re-order dates DESC - reverse chronologically OR ASC - chronologically.
+    Date:
+    LOAD
+        DistinctFieldValues as Date
+    RESIDENT DistinctFieldValues
+    ORDER BY DistinctFieldValues $(parDESC_or_ASC_Date_Ordering);
+
+    DROP TABLE DistinctFieldValues;
+
+    //Create a mapping table to be able to fill-in values further below
+    DatesInQVD_Map:
+    MAPPING LOAD
+        Date as X1,
+        Date as X2
+    RESIDENT Date;
+
+	//Dates are ordered DESC (reverse-chrono), then FIRST date at bottom of table and LAST date is at the top of table
+	IF '$(parDESC_or_ASC_Date_Ordering)' = 'DESC' THEN
+		//Evaluate MonthStart (min) date --> To generate a support table with dates to see which date values are missing
+    	LET vMonthStartDateNUM = NUM(MONTHSTART(PEEK('Date', -1, 'Date')));
+	    //Evaluate MonthStart (max) date --> To generate a support table with dates to see which date values are missing
+    	LET vMonthEndDateNUM = NUM(MONTHSTART(PEEK('Date', 0, 'Date')));
+		//Evaluate MonthStart Next-Month date --> In case last date of month needs filling from NEXT month available
+    	LET vNextMonthStartDate = DAYSTART(MONTHEND(PEEK('Date', 0, 'Date'))+1);
+	END IF;
+	//Dates are ordered ASC (chrono), then LAST date at bottom of table and FIRST date is at the top of table
+	IF '$(parDESC_or_ASC_Date_Ordering)' = 'ASC' THEN
+		//Evaluate MonthStart (min) date --> To generate a support table with dates to see which date values are missing
+    	LET vMonthStartDateNUM = NUM(MONTHSTART(PEEK('Date', 0, 'Date')));
+	    //Evaluate MonthStart (max) date --> To generate a support table with dates to see which date values are missing
+    	LET vMonthEndDateNUM = NUM(MONTHSTART(PEEK('Date', -1, 'Date')));
+		//Evaluate MonthStart Next-Month date --> In case last date of month needs filling from PREVIOUS month available
+    	LET vNextMonthStartDate = MONTHSTART(PEEK('Date', 0, 'Date'))-1;
+	END IF;
+    //Load a support table giving a 'full set of calendar dates' from start to end of all dates
+    FullCalendarDates_Temp01:
+    LOAD
+        DATE($(vMonthStartDateNUM) + ROWNO()-1, 'YYYY-MM-DD') as FullSetOfCalendarDates
+    AUTOGENERATE(NUM($(vMonthEndDateNUM)) - NUM($(vMonthStartDateNUM))+1);
+
+	//Table extremity gap-filler
+	DatesToLoad_Temp01:
+	NOCONCATENATE
+	LOAD
+		DATE('$(vNextMonthStartDate)', 'YYYY-MM-DD') as FullSetOfCalendarDates
+	AUTOGENERATE(1);
+
+    //Load the 'full set of calendar dates', ORDER and CONCATENATE to above if existing, giving a full set of dates
+	DatesToLoad_Temp01:
+	CONCATENATE(DatesToLoad_Temp01)
+    LOAD
+        FullSetOfCalendarDates,
+        ApplyMap('DatesInQVD_Map', FullSetOfCalendarDates, NULL()) as MissingDates,
+        EXISTS(Date, FullSetOfCalendarDates) as MissingDateFlag
+    RESIDENT FullCalendarDates_Temp01;
+
+    DROP TABLE Date;
+    DROP TABLE FullCalendarDates_Temp01;
+
+	//Re-order
+	DatesToLoad_Temp02:
+	NOCONCATENATE
+	LOAD * RESIDENT DatesToLoad_Temp01
+    ORDER BY FullSetOfCalendarDates $(parDESC_or_ASC_Date_Ordering);
+
+	DROP TABLE DatesToLoad_Temp01;
+
+    DatesToLoad_Temp03:
+    NOCONCATENATE
+    LOAD
+        FullSetOfCalendarDates as DatesToBeFilled,
+        MissingDateFlag, //Load flag to select required rows at bottom
+        //If the last day in month of data is missing, needs to be filled in NEXT month of data
+        IF(ISNULL(MissingDateFlag), FullSetOfCalendarDates,
+            //Otherwise select from list (current column) the previous known month of data
+            IF(MissingDateFlag = 0, PEEK(DatesToBeFilledFrom), FullSetOfCalendarDates)) as DatesToBeFilledFrom
+    RESIDENT DatesToLoad_Temp02;
+
+    DROP TABLE DatesToLoad_Temp02;
+
+    //Finalised table containing only values to fill-in and which date to fill-in from
+    DatesToBeFilled:
+    LOAD
+        DatesToBeFilled,
+        DatesToBeFilledFrom,
+        DATE(MONTHSTART(DatesToBeFilledFrom), 'YYYYMM') as DatesToBeFilledFrom_YYYYMM
+    RESIDENT DatesToLoad_Temp03
+    //Only pick out the info/data that requires filling-in/substitution and will NOT take future dates in regards to TODAY()
+    WHERE MissingDateFlag = 0 AND DatesToBeFilled <= TODAY();
+
+    DROP TABLE DatesToLoad_Temp03;
+end sub;
+
+
+// 11) QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
+/*<------  SUB: Create YYYYMM QVD Slices from a RESIDENT Table  ------>*/
+/*
+EXAMPLE of sub's CALL statement:
+CALL QVDCreateYMSlices('SBI-Extract-FC_User_Group','lib://QVDATA/SBI_QlikSense/EXTRACT/SBI-Extract-FC_User_Group','Extract_Date','User_Group_ID')
+
+_______________________
+Rationale:
+_______________________
+Load data from a data source whereby you either want to create YYYYMM slices for a full table load or otherwise adaptable enough for any
+subsequent delta loading following anyy logic from source BUT requiring a PRIMARY KEY to execute. The PRIMARY KEY will be subsequently used to
+look in any existing YYYYMM QVD and take only the PRIMARY KEY records which are not in the last-delta-load from source (with a "WHERE(NOT(EXISTS()))").
+
+sub-routine parameters:
+parTableNameNEEDToNameAsTargetQVDs --> Folder holding the BIG QVD from which you want to create YYYYMM slices.
+parTargetFolder 					--> The BIG QVD name.
+parDateFieldNameToCreateQVDSlices	--> The date field in the RESIDENT Table upon which you want to create the YYYYMM QVD slices.
+parPRIMARYkey                       --> PRIMARY KEY in source data (use the field name, if aliased, that is has in the QVD/output).
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	19 November 2020
+*/
+
+sub QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
+
+    CALL DistinctFieldValues('$(parDateFieldNameToCreateQVDSlices)');
+
+    FOR i=1 TO NoOfRows('DistinctFieldValues')
+        LET vDistinctFieldValues = PEEK('DistinctFieldValues', $(i)-1,'DistinctFieldValues');
+
+        ExistingData: NOCONCATENATE LOAD * RESIDENT [$(parTableNameNEEDToNameAsTargetQVDs)] WHERE DATE(MONTHSTART($(parDateFieldNameToCreateQVDSlices)), 'YYYYMM') = DATE#('$(vDistinctFieldValues)', 'YYYYMM');
+        DROP FIELD $(parDateFieldNameToCreateQVDSlices) FROM ExistingData;
+
+        IF ALT(QvdCreateTime('$(parTargetFolder)/$(parTableNameNEEDToNameAsTargetQVDs)_$(vDistinctFieldValues).qvd'), 0) > 0 THEN
+            CONCATENATE(ExistingData)
+            LOAD * FROM [$(parTargetFolder)/$(parTableNameNEEDToNameAsTargetQVDs)_$(vDistinctFieldValues).qvd] (QVD)
+            WHERE NOT(EXISTS($(parPRIMARYkey)));
+        END IF;
+
+        //One last distinct because things have and can go wrong
+        ExistingData_QVD: NOCONCATENATE LOAD DISTINCT * RESIDENT ExistingData;
+        DROP TABLE ExistingData;        
+        STORE ExistingData_QVD INTO [$(parTargetFolder)/$(parTableNameNEEDToNameAsTargetQVDs)_$(vDistinctFieldValues).qvd] (QVD);
+        DROP TABLE ExistingData_QVD;
+    NEXT i;
+
+    DROP TABLE [$(parTableNameNEEDToNameAsTargetQVDs)];
+    DROP TABLE DistinctFieldValues;
+end sub;
+
+
+// 999) QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
+/*<------ SUB: Create YYYYMM QVD Slices from a large QVD (this is a 'temp' sub to get you started on YYYYMM QVD slices ------>*/
+/*
+EXAMPLE of sub's CALL statement:
+CALL QVDCreateYMSlicesFromQVD('lib://QVDATA/SBI_QlikSense/','SBI-Extract-FC_User_Group','Extract_Date');
+
+_______________________
+Rationale:
+_______________________
+Based on the assumption that you have created a QVD file system that stores data into YYYYMM slices, this script calls for the 
+last 'N' slices into a support table that can be used for further purposes.
+
+sub-routine parameters:
+parSourceQVDFolder					--> Folder holding the BIG QVD from which you want to create YYYYMM slices.
+parSourceQVDFile					--> The BIG QVD name.
+parTargetFolder						--> Root target folder.
+parDateFieldNameToCreateQVDSlices	--> The date field in the BIG QVD upon which you want to create the YYYYMM QVD slices.
+
+Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Date:	12 September 2020
+*/
+sub QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
+
+	Temp01: LOAD * FROM [$(parSourceQVDFolder)/$(parSourceQVDFile).qvd] (QVD);
+
+	Temp02: NOCONCATENATE LOAD *, DATE(MONTHSTART([$(parDateFieldNameToCreateQVDSlices)]), 'YYYYMM') as [$(parDateFieldNameToCreateQVDSlices)_YYYYMM] RESIDENT Temp01;
+
+	DROP TABLE Temp01;
+
+	FOR Each vFieldValue in FieldValueList('$(parDateFieldNameToCreateQVDSlices)_YYYYMM')
+		FieldValues: LOAD '$(vFieldValue)' as FieldValues AUTOGENERATE(1);
+	NEXT vFieldValue;
+
+	FOR i=1 TO NoOfRows('FieldValues')
+		LET vFilterValue = PEEK('FieldValues', $(i)-1,'FieldValues');
+    	TRACE Loading and Storing "$(parDateFieldNameToCreateQVDSlices)" Data for $(vFilterValue);    
+    	TempFiltered: NOCONCATENATE LOAD * RESIDENT Temp02 WHERE [$(parDateFieldNameToCreateQVDSlices)_YYYYMM] = DATE#('$(vFilterValue)', 'YYYYMM');
+		//Drop Support field before 
+		DROP FIELD [$(parDateFieldNameToCreateQVDSlices)_YYYYMM] FROM TempFiltered;
+    	STORE TempFiltered INTO [$(parTargetFolder)/$(parSourceQVDFile)/$(parSourceQVDFile)_$(vFilterValue).qvd] (QVD);
+    	DROP TABLE TempFiltered;
+	NEXT i;
+		//STORE NULLS if they EXIST. The QVD is named "-NULLS" as opposed "_NULLS" in order NOT to cause confusion when using the
+		// sub-routine above "QVDFileNamesList".
+		TempFiltered_NULLS: NOCONCATENATE LOAD * RESIDENT Temp02 WHERE ISNULL([$(parDateFieldNameToCreateQVDSlices)_YYYYMM]);
+		DROP FIELD [$(parDateFieldNameToCreateQVDSlices)_YYYYMM] FROM TempFiltered_NULLS;
+    	STORE TempFiltered_NULLS INTO [$(parTargetFolder)/$(parSourceQVDFile)/$(parSourceQVDFile)-NULLS.qvd] (QVD);
+
+	DROP TABLE Temp02;
+end sub;
+
