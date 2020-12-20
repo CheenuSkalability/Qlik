@@ -1,0 +1,361 @@
+﻿///$tab Main
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='£#,##0.00;-£#,##0.00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD/MM/YYYY';
+SET TimestampFormat='DD/MM/YYYY hh:mm:ss[.fff]';
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+SET FirstWeekDay=0;
+SET BrokenWeeks=0;
+SET ReferenceDay=4;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-GB';
+
+/*
+
+Script created by Cheenu Janakiram and published to Qlik Discussion Boards on 10th March 2018.
+Skalability Limited
+
+****** Automated script: Insert into a SQL table from a QVD ******
+
+Benchmark:
+- Writes 1,000 rows (one insert) every 1.63 seconds for a table 7 columns deep.
+- Writes 45,637 rows in 58 seconds for a table 10 columns deep.
+
+_______________________________
+Assumptions & Instructions:
+_______________________________
+
+1.	This file uses "BULK INSERT" into the SQL table and executes 1,000 rows at a time.
+2.	It is imperative to get the initial Source QVD data type correct in order for the script to create an optimal SQL table:
+		a. Using NUM() converts into a SQL a "decimal(18,10)" data type.
+		b. FLOOR(NUM()) converts into a SQL a "int" data type.
+		c. Date(..., 'YYYY-MM-DD') converts into a SQL "date" type.
+		d. Any other field type at source will be converted into a SQL "nvarchar(MAX)" type.
+3. All special characters are removed from the QVD table name and field names and "_" replaces spaces, in order to conform with proper DB naming-convention.
+4.	Set BELOW:
+		(a) the "path to QVD" --> "vSourceQVD",
+		(b) the "name of the target database" (it must exist, but the table should not exist) --> "vTargetSQLDB"
+		and
+		(c) reset the "create DB to" 'Yes' if you have deleted the table and want the script to re-create it. --> "vCreateSQLDB"
+
+5. Change the "CONNECT TO" statement in the script just below.
+*/
+LET vStartScript = Date(NOW(), 'DD-MMM-YYYY HH:mm:ss');
+LET vStartScriptNUM = NUM(NOW());
+
+//PLACE CONNECT TO DATABASE SERVER STRING BELOW:
+OLEDB CONNECT TO [Provider=SQLOLEDB.1;Integrated Security=SSPI;Persist Security Info=False;Data Source=SKALABILITY\SKALABILITY;Use Procedure for Prepare=1;Auto Translate=True;Packet Size=4096;Workstation ID=SKALABILITY;Use Encryption for Data=False;Tag with column collation when possible=False];
+
+//SET ALL VARS BELOW:
+//	1. Give path to QVD to store in SQL server:
+SET vSourceQVD = 'C:\Users\cheen\Documents\02 Qlik\Qlik Archive\01. Generic QVW Scripts\01. WriteToSQLDB - SR2\SEB_Portfolio.qvd';
+
+//	2. Give the name of the Target Database:
+SET vTargetSQLDB = 'PORTFOLIO';
+
+//	3. Do you want to create DB table (default: "Yes")?
+SET vCreateSQLDB = 'Yes';
+
+/*
+Instructions (continued):
+5.	When the SQL table was created by the script, rerun the script to write the data to SQL (it should clean out all "special characters in the fields".
+
+6.	State whether you want to truncate the SQL table before re-running this script in case you put it into a task (if you don't run it manually).
+*/
+
+//	4. Do you want to truncate the SQL Table before loading data? (Yes or No)
+SET vTruncateSQLTable = 'Yes';
+
+//	5. Do you want to write data to SQL Table?
+SET vWriteToSQL = 'No';
+///$tab Config and DB CONNECT TO
+//Variables from input:
+LET vSQLDB = '[' & '$(vTargetSQLDB)' & ']';
+///$tab 01. QVD Data Structure
+SpecialChar_Map:
+MAPPING LOAD
+	SubField('\,|,<,.,>,/,?,#,~,@,;,:,],},[,{,=,+,-,),(,*,&,^,",!,¬,`,¦', ',') as SpecialChars,
+	',' as ReplaceChar
+AUTOGENERATE(1);
+
+//Checking QVD Table structure:
+QVD_TABLE:
+LOAD
+    UPPER(Replace(Replace(MapSubString('SpecialChar_Map', Trim(TableName)), ',', ' '), ' ', '_')) as QVD_TableName,
+    NoOfRecords
+FROM $(vSourceQVD) (XmlSimple, Table is [QvdTableHeader]);
+
+//Map QVD data types to SQL data types
+SQL_DATA_TYPES_MAP:
+MAPPING LOAD 'REAL' as QVD_DataTypes, '[decimal](18, 10)' as SQL_DataTypes AUTOGENERATE(1);
+MAPPING LOAD 'INTEGER' as QVD_DataTypes, '[int]' as SQL_DataTypes AUTOGENERATE(1);
+MAPPING LOAD 'DATE' as QVD_DataTypes, '[date]' as SQL_DataTypes AUTOGENERATE(1);
+
+//Get QVD Field names and "data types":
+QVD_FIELDS:
+LOAD
+	FieldName as QVD_FieldName,
+    UPPER(Replace(Replace(MapSubString('SpecialChar_Map', Trim(FieldName)), ',', ''), ' ', '_')) as SQL_FieldName,
+	ROWNO() as QVDFieldNumber,
+    ApplyMap('SQL_DATA_TYPES_MAP', [NumberFormat/Type], '[nvarchar](MAX)') as DataType,
+    [NumberFormat/Type] as [NumberFormat/Type_ORIGINAL]
+FROM $(vSourceQVD) (XmlSimple, Table is [QvdTableHeader/Fields/QvdFieldHeader]);
+
+//Clean field naming:
+RenameFields_Map:
+MAPPING LOAD QVD_FieldName, SQL_FieldName as AliasFieldName  RESIDENT QVD_FIELDS;
+
+LET vSQLTableCreate = PEEK('QVD_TableName', 0, 'QVD_TABLE');
+DROP TABLE QVD_TABLE;
+///$tab 02. Create Target SQL Table
+IF '$(vCreateSQLDBTable)' = 'Yes' THEN
+
+	SET vFieldsString2CreateSQLTable = '';
+ 	
+	SQLTableFieldNames:
+	LOAD 
+		RowNo() as FieldRanking,
+		'[' & SQL_FieldName & '] ' & DataType & ' NULL' as ConcatenatedFieldsForSQLScript
+	RESIDENT QVD_FIELDS;
+	
+	FieldsString2CreateSQLTable:
+	LOAD
+		Concat(DISTINCT ConcatenatedFieldsForSQLScript, ', ', FieldRanking) as FieldsString2CreateSQLTable
+	RESIDENT SQLTableFieldNames;
+	
+	DROP TABLE SQLTableFieldNames;
+	
+	LET vFieldsString2CreateSQLTable = PEEK('FieldsString2CreateSQLTable', 0, 'FieldsString2CreateSQLTable');
+	DROP TABLE FieldsString2CreateSQLTable;
+	
+	SQL 
+	USE $(vSQLDB)
+	
+	SET ANSI_NULLS ON
+	
+	SET QUOTED_IDENTIFIER ON
+	
+	CREATE TABLE $(vSQLTableCreate)
+	(
+		$(vFieldsString2CreateSQLTable)
+	) ON [PRIMARY]
+	;
+	
+	TRACE *********** Double-check in SSMS that the $(vSQLTableCreate) you have just created exists. ***********;
+	
+	SET vCreateSQLDBTable = 'No';
+	SET vWriteToSQL = 'Yes';
+	EXIT SCRIPT;
+
+END IF;
+///$tab From QVD
+IF '$(vWriteToSQL)' = 'Yes' THEN
+
+	DATA_TABLE:
+// 	1.	Load only first row in order to fetch all field names in the underlying data file
+	FIRST 1 LOAD * FROM $(vSourceQVD) (qvd);
+
+	//Rename QVD FieldNames to SQL column names
+	RENAME FIELD USING RenameFields_Map;
+
+//	2. 	Determine total number of fields in underlying QVD to generate a table with all the QVD field names
+	LET vFieldsInQVD = NoOfFields('DATA_TABLE');
+
+	QVDFieldNumberSequence:
+	LOAD RowNo() as QVDFieldNumber AutoGenerate ($(vFieldsInQVD));
+
+//	3. Determine the max field number in order to be able to identify the last field name in QVD
+	LET vMaxFieldNumber = PEEK('QVDFieldNumber', -1, 'QVDFieldNumberSequence');
+
+//	4.	For each field, generate a script line that will be used to load the fields in order and purge the commas and single quotes from the field
+	FOR vQVDFieldNumberSequence = 1 to NoOfRows('QVDFieldNumberSequence')
+	
+		QVDStructure_Temp:
+		LOAD
+		IF($(vMaxFieldNumber) = $(vQVDFieldNumberSequence),
+			//IF the field is the last field in the list of QVD fields, there is no need for comma separation and the whole string must be aliased to "FULL_SQL_STRING" which will be the lines used to load into the SQL table 
+			'IF(LEN([' & FieldName($(vQVDFieldNumberSequence), 'DATA_TABLE') & ']) > 0, CHR(39) & Replace(Purgechar([' & FieldName($(vQVDFieldNumberSequence), 'DATA_TABLE') & '], CHR(44)), CHR(39), CHR(180)) & CHR(39), ' & CHR(39) & 'NULL' & CHR(39) & ') as FULL_SQL_STRING',
+			//ELSE the value needs to be comma separated. 
+			'IF(LEN([' & FieldName($(vQVDFieldNumberSequence), 'DATA_TABLE') & ']) > 0, CHR(39) & Replace(Purgechar([' & FieldName($(vQVDFieldNumberSequence), 'DATA_TABLE') & '], CHR(44)), CHR(39), CHR(180)) & CHR(39), ' & CHR(39) & 'NULL' & CHR(39) & ') & ' & CHR(39) & ',' & CHR(39) & '&')
+		as QVDFieldName,
+		//Generate SQL field names
+		FieldName($(vQVDFieldNumberSequence), 'DATA_TABLE') as SQLFieldName,
+		$(vQVDFieldNumberSequence) as FieldSequence
+		AutoGenerate(1);
+	
+	NEXT
+	
+	DROP TABLE QVDFieldNumberSequence;
+
+//	5. Generate the Qlik variables required for the insert into SQL statement
+	QVDFieldsInfo:
+	LOAD
+		(RowNo() + 1) as FieldSequence,
+		'vValue' & (RowNo() + 1) as SQLVariableName,
+		'[' & SQLFieldName & ']' as SQLFieldName//	FieldName
+	RESIDENT QVDStructure_Temp;
+	
+	SQLFieldNames:
+	LOAD
+		Concat(DISTINCT SQLFieldName, ',', FieldSequence) as SQLFieldNames
+	RESIDENT QVDFieldsInfo;
+	
+	//Put into a variable the string of SQL names to be used - I.E. FIELD NAMES IN SQL MUST BE EXACTLY THE SAME AS IN QVD!!!
+	LET vSQLFieldNames = PEEK('SQLFieldNames', 0, 'SQLFieldNames');
+	
+	DROP TABLE SQLFieldNames;
+	DROP TABLE QVDFieldsInfo;
+
+//	6. Load all the generated scripted lines for all the fields so that it can be inserted into a variable.
+	CreateQVDCleanseScript:
+	LOAD
+		Concat(QVDFieldName, ' ', FieldSequence) as CreateQVDCleanseScript
+	RESIDENT QVDStructure_Temp;
+	
+	DROP TABLE QVDStructure_Temp;
+	
+	LET vCreateQVDCleanseScript = PEEK('CreateQVDCleanseScript', 0, 'CreateQVDCleanseScript');
+	DROP TABLE CreateQVDCleanseScript;
+	
+	DROP TABLE DATA_TABLE;
+			
+	FULL_SQL_STRING_Temp:
+	LOAD * FROM $(vSourceQVD) (qvd);
+	
+	RENAME FIELD USING RenameFields_Map;
+		
+	DROP TABLE QVD_FIELDS;
+
+//	7. Load data from QVD using the generated script lines which purge the commas and single quotes into the format required to insert into SQL.
+	FULL_SQL_STRING:
+	LOAD
+	RowNo() as LoadTracker,
+	$(vCreateQVDCleanseScript)
+	RESIDENT FULL_SQL_STRING_Temp;
+	
+	DROP TABLE FULL_SQL_STRING_Temp;
+	
+	LET vQVDTotalRows = NoOfRows('FULL_SQL_STRING');
+///$tab INSERT into SQL Table
+//Get maximum number of rows in a table, in order to create groupings of 1000
+//SQL insert statement can only take 1,000 rows for an insert:
+LET vSQLThousands = Ceil(NoOfRows('FULL_SQL_STRING') / 1000);
+
+IntervalValues:
+LOAD
+	RowNo() as IntervalValues
+AutoGenerate($(vSQLThousands));
+
+	FOR vSQLInterval = 1 to NoOfRows('IntervalValues')
+		LET vIntervalBase = PEEK('IntervalValues', vSQLInterval-1, 'IntervalValues');
+		
+		SQLIntervals:
+		LOAD
+			(($(vIntervalBase) - 1) * 1000) + 1 as StartRow,
+			(($(vIntervalBase) * 1000)) as EndRow
+		AutoGenerate(1);		
+	NEXT vSQLInterval
+
+DROP TABLE IntervalValues;
+
+//WHEN THIS IS A NEW INSERT: Switch this OLEDB Connection AND Update the DB schema and table name below
+//OLEDB CONNECT TO [Provider=SQLOLEDB.1;Integrated Security=SSPI;Persist Security Info=False;Data Source=DELILAH\DELILAH;Use Procedure for Prepare=1;Auto Translate=True;Packet Size=4096;Workstation ID=DELILAH;Use Encryption for Data=False;Tag with column collation when possible=False];
+
+//Truncate table?
+IF '$(vTruncateSQLTable)' = 'Yes' THEN
+
+	SQL TRUNCATE TABLE [$(vTargetSQLDB)].[dbo].[$(vSQLTableCreate)];
+	Trace SQL Table HAS been truncated!!!;
+	
+ELSE
+
+	Trace SQL Table has NOT been truncated!!!;
+
+END IF;
+
+
+FOR vInserts = 1 to NoOfRows('SQLIntervals')
+
+	LET vStartQVWRow = PEEK('StartRow',vInserts-1,'SQLIntervals');
+	LET vEndQVWRow = PEEK('EndRow',vInserts-1,'SQLIntervals');
+	
+	
+	TXN_Temp:
+	NoConcatenate
+	LOAD
+		'(' & Concat(FULL_SQL_STRING, '),(') & ')' as SQL_STRING_VALUES_TO_PARSE
+	RESIDENT FULL_SQL_STRING
+	WHERE LoadTracker >= $(vStartQVWRow) and LoadTracker <= $(vEndQVWRow);
+	
+	LET vSQL_STRING_VALUES_TO_PARSE = PEEK('SQL_STRING_VALUES_TO_PARSE', 0, 'TXN_Temp');
+	
+	//Insert rows into SQL Table
+	SQL INSERT INTO [$(vTargetSQLDB)].[dbo].[$(vSQLTableCreate)] ($(vSQLFieldNames))
+	VALUES $(vSQL_STRING_VALUES_TO_PARSE)
+	;
+	
+	TRACE *********** Script has written QVD data to the SQL table $(vTargetSQLDB) for rows $(vStartQVWRow) to $(vEndQVWRow). Verify the data in the SQL table with SSMS. ***********;
+	
+	DROP TABLE TXN_Temp;
+
+NEXT vInserts;
+
+DROP TABLE FULL_SQL_STRING;
+
+
+SQLInsertResult:
+LOAD
+	IF($(vQVDTotalRows) = SQLTotalRows, 'SUCCESS: Inserted exact amount of rows from QVD into SQL.', 'FAILURE: Rows of data inserted into SQL is not same as the amount of rows in QVD.') as SQLInsertResult,
+	SQLTotalRows
+;
+SQL SELECT Count(*)  as SQLTotalRows
+FROM [$(vTargetSQLDB)].[dbo].[$(vSQLTableCreate)];
+
+LET vSQLInsertResult = PEEK('SQLInsertResult', 0, 'SQLInsertResult');
+LET vSQLTotalRows = PEEK('SQLTotalRows', 0, 'SQLInsertResult');
+
+DROP TABLE SQLInsertResult;
+
+//Log date/time of all writings to DB:
+DB_Write_Log:
+LOAD
+	'$(vQVDSourceFolder)' as [QVD Written],
+	'$(vQVDTotalRows)' as [Total Rows in QVD],
+	'$(vMaxFieldNumber)' as [Number of Fields],
+	'$(vTargetSQLDB)' & '.dbo.' &'[$(vSQLTableCreate)]' as [DB Written],
+	'$(vSQLTotalRows)' as [Total Rows in SQL],
+	'$(vTruncateSQLTable)' as [Table Truncated],
+	Date(Today(), 'DD-MMM-YYYY') as [Date Written],
+	Time(Now(), 'HH:mm:ss') as [Time Written]
+AUTOGENERATE(1);
+
+IF ALT(QvdCreateTime('DB_Write_Log.qvd'), 0) <> 0 THEN
+
+	DB_Write_Log: Concatenate(DB_Write_Log) LOAD * FROM DB_Write_Log.qvd (QVD);
+	STORE DB_Write_Log into DB_Write_Log.qvd (QVD);
+	DROP TABLE DB_Write_Log;
+
+ELSE
+
+	STORE DB_Write_Log into DB_Write_Log.qvd (QVD);
+	DROP TABLE DB_Write_Log;
+
+END IF;
+	
+LET vEndScript = Date(TODAY(), 'DD-MMM-YYYY') & ' ' & Time(Now(), 'HH:mm:ss');
+LET vScriptDuration = Interval(NUM(NOW()) - $(vStartDuration));
+
+DROP TABLE SQLIntervals;
+
+END IF;
+
+//Close script variables:
+LET vEndScript = Date(TODAY(), 'DD-MMM-YYYY HH:mm:ss');
+LET vScriptDuration = Interval(NUM(NOW()) - $(vStartScriptNUM));
