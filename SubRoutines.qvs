@@ -1,7 +1,5 @@
 TRACE *** INCLUDE: $(vScriptPath)SubRoutines.qvs *** ;
 
-REM Change Log:  ;
-
 /* SUB-ROUTINES:
 
 	1)	DropTemp_TablesANDFields
