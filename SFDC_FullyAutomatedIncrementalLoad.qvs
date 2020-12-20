@@ -1,4 +1,4 @@
-TRACE ******  Loading the sub-routing for the SFDC Fully Automated Incremental Loading.  ******;
+TRACE ******  Loading the sub-routine for the SFDC Fully Automated Incremental Loading.  ******;
 
 sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parPrimaryKey,parDateTimeField,parDBTableFieldsChecker_YES)
 
