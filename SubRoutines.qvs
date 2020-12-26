@@ -20,9 +20,7 @@ TRACE *** INCLUDE: $(vScriptPath)SubRoutines.qvs *** ;
  * Sub routine to drop all temporary tables and fields from a document.
  * Please note, temporary tables and fields to be dropped are the ones whose name starts with the suffix '_temp' case insensitive.
  */
-
-SUB DropTemp_TablesANDFields
-
+sub DropTemp_TablesANDFields
 	TRACE ***SUB: DropTemp_TablesANDFields *** ;
 	
 	LET i = 0;
@@ -49,44 +47,35 @@ SUB DropTemp_TablesANDFields
 	LET a = ;
 	LET vTable = ;
 	LET vField = ;
-
-ENDSUB
+end sub;
 
 
 /* 2) StoreDropAllTables ()
  * Sub routine to Store  AND Drop all current tables
  * Takes 1 parameter: vStorePrefix to be set with the name of the transform, example: 'SBI-Ratings'
  */
-
-SUB StoreDropAllTables (vStorePrefix)
-
+sub StoreDropAllTables (vStorePrefix)
 	TRACE ***SUB: StoreDropAllNetTables *** ;
 	
 	LET vTableList = ;
 	
 	FOR i = 0 TO NoOfTables() - 1
-		
 		LET vTable = TableName (i);
 		LET vTableList = vTableList & CHR (39) & vTable & CHR (39) & ',' ;
-				
-	NEXT
+	NEXT i;
 	
 	LET vTableList = LEFT (vTableList, LEN (vTableList) - 1) ; //GB: Removes last ','
 	
 	FOR EACH vTable IN $(vTableList)
-	
 		TRACE STORE "$(vTable)" INTO [$(QVDataPath)SBI\$(vStorePrefix)$(vTable).qvd];
 		STORE "$(vTable)" INTO [$(QVDataPath)SBI\$(vStorePrefix)$(vTable).qvd];
-		
-		DROP TABLE [$(vTable)];
-	
-	NEXT
+		DROP TABLE [$(vTable)];	
+	NEXT vTable;
 	
 	//CLEAN UP
 	LET vTable = ;
 	LET vTableList = ;
-
-ENDSUB
+end sub;
 
 
 // 3) MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,parMappingField1,parMappingField2)
@@ -115,54 +104,52 @@ parMappingTableName_Optional	--> Add a MAPPING Table name for when you call it w
 parMappingField1				--> The name of the first (VLOOKUP) field in the mapping table as it is in the source QVD.
 parMappingField2				--> The name of the second field in the mapping table as it is in the source QVD.
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	29 August 2020
 */
 sub MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,parMappingField1,parMappingField2)
+	//Checking the number of records in the underlying QVD to establish whether greater than 100,000 or not.
+	Mapping_NoofRecords: LOAD QvdNoOfRecords('$(parQVDTargetFolder)/$(parQVDName).qvd') as Mapping_NoofRecords AUTOGENERATE(1);
+	LET vMapping_NoofRecords = PEEK('Mapping_NoofRecords', 0, 'Mapping_NoofRecords');
+	DROP TABLE Mapping_NoofRecords;
 
-//Checking the number of records in the underlying QVD to establish whether greater than 100,000 or not.
-Mapping_NoofRecords: LOAD QvdNoOfRecords('$(parQVDTargetFolder)/$(parQVDName).qvd') as Mapping_NoofRecords AUTOGENERATE(1);
-LET vMapping_NoofRecords = PEEK('Mapping_NoofRecords', 0, 'Mapping_NoofRecords');
-DROP TABLE Mapping_NoofRecords;
+	//Create a unique identifier to add to mapping field name, just in case, to prevent potential automatic mapping table concatenation.
+	LET vUniqueIDSuffix = SUBFIELD(ROUND(FRAC(NOW()), 0.000001), '0.', 2);
 
-//Create a unique identifier to add to mapping field name, just in case, to prevent potential automatic mapping table concatenation.
-LET vUniqueIDSuffix = SUBFIELD(ROUND(FRAC(NOW()), 0.000001), '0.', 2);
+	//Setting the MAPPING table name if it has been defined in "parMappingTableName_Optional". If is was left blank (i.e. '', then the
+	//script will automatically take the "parQVDName" and append '_Map' as a suffix.
+	IF LEN(TRIM('$(parMappingTableName_Optional)')) > 0 THEN
+		SET vMappingTableName = '$(parMappingTableName_Optional)';
+	ELSE
+		SET vMappingTableName = '$(parQVDName)_Map';
+	END IF;
 
-//Setting the MAPPING table name if it has been defined in "parMappingTableName_Optional". If is was left blank (i.e. '', then the
-//script will automatically take the "parQVDName" and append '_Map' as a suffix.
-IF LEN(TRIM('$(parMappingTableName_Optional)')) > 0 THEN
-	SET vMappingTableName = '$(parMappingTableName_Optional)';
-ELSE
-	SET vMappingTableName = '$(parQVDName)_Map';
-END IF;
-
-//ACTUAL LOAD STATEMENT  --> If the underlying QVD has more than 100,000 rows of data, it will load via a temp table.
-IF $(vMapping_NoofRecords) > 100000 THEN
-	TRACE *** There are "$(vMapping_NoofRecords)" in underlying "$(parQVDName)" QVD --> Loading via Temp table. ***;
-	//First load in super-fast load-mode into a temp table
-	Temp:
-    LOAD
-    	[$(parMappingField1)],
-        [$(parMappingField2)]
-	FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD);
-    
-    //Then reload into a MAPPING table, 'iff' the mapping table was NOT named as a sub parameter, then when needs to be called for is "parQVDName_Map"
-    [$(vMappingTableName)]:
-    MAPPING LOAD DISTINCT
-    		[$(parMappingField1)] as [X1_$(vUniqueIDSuffix)],
-            [$(parMappingField2)] as [X2_$(vUniqueIDSuffix)]
-	RESIDENT Temp;
-    
-    DROP TABLE Temp;
-ELSE
-	TRACE *** There are "$(vMapping_NoofRecords)" in underlying "$(parQVDName)" QVD --> Loading directly from QVD. ***;
-	[$(vMappingTableName)]:
-    MAPPING LOAD
-    		[$(parMappingField1)] as [X1_$(vUniqueIDSuffix)],
-            [$(parMappingField2)] as [X2_$(vUniqueIDSuffix)]
-	FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD);
-END IF;
-
+	//ACTUAL LOAD STATEMENT  --> If the underlying QVD has more than 100,000 rows of data, it will load via a temp table.
+	IF $(vMapping_NoofRecords) > 100000 THEN
+		TRACE *** There are "$(vMapping_NoofRecords)" in underlying "$(parQVDName)" QVD --> Loading via Temp table. ***;
+		//First load in super-fast load-mode into a temp table
+		Temp:
+		LOAD
+			[$(parMappingField1)],
+			[$(parMappingField2)]
+		FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD);
+		
+		//Then reload into a MAPPING table, 'iff' the mapping table was NOT named as a sub parameter, then when needs to be called for is "parQVDName_Map"
+		[$(vMappingTableName)]:
+		MAPPING LOAD DISTINCT
+				[$(parMappingField1)] as [X1_$(vUniqueIDSuffix)],
+				[$(parMappingField2)] as [X2_$(vUniqueIDSuffix)]
+		RESIDENT Temp;
+		
+		DROP TABLE Temp;
+	ELSE
+		TRACE *** There are "$(vMapping_NoofRecords)" in underlying "$(parQVDName)" QVD --> Loading directly from QVD. ***;
+		[$(vMappingTableName)]:
+		MAPPING LOAD
+				[$(parMappingField1)] as [X1_$(vUniqueIDSuffix)],
+				[$(parMappingField2)] as [X2_$(vUniqueIDSuffix)]
+		FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD);
+	END IF;
 end sub;
 
 
@@ -184,10 +171,9 @@ Mainly used for ETL scripts, where all tables need to be dropped in order to dec
 sub-routine parameters:
 parTableExceptions_PIPE_Delimited	--> Pipe-delimit a list of table you do  NOT want to drop.
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	3 September 2020
 */
-
 sub DropAllTables(parTableExceptions_PIPE_Delimited)
 	LET vAllTables = NoOfTables();
 		FOR zz=0 to $(vAllTables)-1
@@ -262,39 +248,37 @@ LOAD
 FROM [lib://QVDATA/SBI_QlikSense/SBI-Transform-FC_User_ID_Agent_ID_Mappings.qvd] (QVD)
 WHERE User_Date >= MAKEDATE(2019,1,1)
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	2 September 2020
 */
 sub QVDFilterDate(parScriptLoadStatementSubName,parQVDStartDate,parQVDEndDate,parQVDDateField_Name,parQVDDateField_NUMorDateFormat)
+	//Establish from the sub's parameters whether to return the supporting date values as a NUM or as a Date() and in which format.
+	IF UPPER('$(parQVDDateFieldNUMorDateFormat)') = 'NUM' THEN
+		SET vFunction = 'NUM';
+		SET vFunctionParameter = '';
+	ELSE
+		SET vFunction = 'Date';
+		LET vFunctionParameter = ',' & CHR(39) & '$(parQVDDateField_NUMorDateFormat)' & CHR(39);
+	END IF;
 
-//Establish from the sub's parameters whether to return the supporting date values as a NUM or as a Date() and in which format.
-IF UPPER('$(parQVDDateFieldNUMorDateFormat)') = 'NUM' THEN
-	SET vFunction = 'NUM';
-    SET vFunctionParameter = '';
-ELSE
-	SET vFunction = 'Date';
-    LET vFunctionParameter = ',' & CHR(39) & '$(parQVDDateField_NUMorDateFormat)' & CHR(39);
-END IF;
+	//Generate a Support table with dates where the date fieldname is set as the same as in the QVD table/file you want to load from.
+	SupportTemp:
+	LOAD
+		$(vFunction)($(parQVDStartDate) + ROWNO()-1 $(vFunctionParameter)) as [$(parQVDDateField_Name)]
+	AUTOGENERATE(NUM($(parQVDEndDate)) - NUM($(parQVDStartDate))+1);
 
-//Generate a Support table with dates where the date fieldname is set as the same as in the QVD table/file you want to load from.
-SupportTemp:
-LOAD
-	$(vFunction)($(parQVDStartDate) + ROWNO()-1 $(vFunctionParameter)) as [$(parQVDDateField_Name)]
-AUTOGENERATE(NUM($(parQVDEndDate)) - NUM($(parQVDStartDate))+1);
+	/*
+	Call for the load statement that:
+	1.	You have created and encapsulated in a 'sub' routine.
+	2.	The load statement from QVD should be based on a 'date field' and therefore you must include a trailing
+		"Where EXISTS("parQVDDateField_Name");". Note that this where exists is on the same fieldname you use as the
+		"parQVDDateField_Name" parameter in this sub-routine.
+	*/
+	//This is the load statement you have created in your script and encapsulated in a sub that is being CALLed.
+	CALL $(parScriptLoadStatementSubName);
 
-/*
-Call for the load statement that:
-1.	You have created and encapsulated in a 'sub' routine.
-2.	The load statement from QVD should be based on a 'date field' and therefore you must include a trailing
-	"Where EXISTS("parQVDDateField_Name");". Note that this where exists is on the same fieldname you use as the
-	"parQVDDateField_Name" parameter in this sub-routine.
-*/
-//This is the load statement you have created in your script and encapsulated in a sub that is being CALLed.
-CALL $(parScriptLoadStatementSubName);
-
-//Drop the support table
-DROP TABLE SupportTemp;
-
+	//Drop the support table
+	DROP TABLE SupportTemp;
 end sub;
 
 
@@ -362,29 +346,27 @@ CALL QVDFilterField('HelloWorld','Delivery_Channel','FC Web|Excel Add-In');
 
 The above, using the sub routine herein, would go significantly faster than direct filtering, as per Test results stated above.
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	2 September 2020
 */
-
 sub QVDFilterField(parScriptLoadStatementSubName,parQVDFilterONField_Name,parQVDFieldFilters_PIPE_Delimited)
+	//Create support table with all the field values required
+	SupportTemp:
+	LOAD
+		SUBFIELD('$(parQVDFieldFilters_PIPE_Delimited)', '|') as [$(parQVDFilterONField_Name)]
+	AUTOGENERATE(1);
 
-//Create support table with all the field values required
-SupportTemp:
-LOAD
-	SUBFIELD('$(parQVDFieldFilters_PIPE_Delimited)', '|') as [$(parQVDFilterONField_Name)]
-AUTOGENERATE(1);
+	/*
+	Call for the load statement that:
+	1.	You have created and encapsulated in a 'sub' routine.
+	2.	The load statement from QVD should be based on one field' and therefore you must include
+		a trailing "Where EXISTS("parQVDFilterONField_Name");". Note that this where exists is on the same
+		fieldname you use as the "parQVDFilterONField_Name" parameter in this sub-routine.
+	*/
+	CALL $(parScriptLoadStatementSubName);
 
-/*
-Call for the load statement that:
-1.	You have created and encapsulated in a 'sub' routine.
-2.	The load statement from QVD should be based on one field' and therefore you must include
-	a trailing "Where EXISTS("parQVDFilterONField_Name");". Note that this where exists is on the same
-    fieldname you use as the "parQVDFilterONField_Name" parameter in this sub-routine.
-*/
-CALL $(parScriptLoadStatementSubName);
-
-//Drop the support table
-DROP TABLE SupportTemp;
+	//Drop the support table
+	DROP TABLE SupportTemp;
 end sub;
 
 
@@ -405,25 +387,24 @@ parQVDTargetFolder	--> Folder holding the QVDs in question.
 parQVDNamePrefix	--> the set file name prefix before the "_YYYYMM" filename suffix.
 parLoadLastNFiles	--> Load the last N periods, reverse chronologically.
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	12 September 2020
 */
 sub QVDFileNamesList(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles)
-
-FOR EACH File IN FileList('$(parQVDTargetFolder)/$(parQVDNamePrefix)_*.qvd')
-	FileList_Temp: LOAD '$(File)' as FileList AUTOGENERATE(1);
-NEXT File;
-QVDFileNamesList:
-NOCONCATENATE FIRST $(parLoadLastNFiles)
-LOAD
-	QVDFileNamesList,
-	SUBFIELD(SUBFIELD(QVDFileNamesListNUM_Temp, '_', SUBSTRINGCOUNT(QVDFileNamesListNUM_Temp, '_')+1), '.qvd', 1) as QVDFileNamesListNUM
-;
-LOAD 
-	FileList as QVDFileNamesList,
-	SUBFIELD(FileList, '/', SUBSTRINGCOUNT(FileList, '/')+1) as QVDFileNamesListNUM_Temp
-RESIDENT FileList_Temp ORDER BY FileList DESC;
-DROP TABLE FileList_Temp;
+	FOR EACH File IN FileList('$(parQVDTargetFolder)/$(parQVDNamePrefix)_*.qvd')
+		FileList_Temp: LOAD '$(File)' as FileList AUTOGENERATE(1);
+	NEXT File;
+	QVDFileNamesList:
+	NOCONCATENATE FIRST $(parLoadLastNFiles)
+	LOAD
+		QVDFileNamesList,
+		SUBFIELD(SUBFIELD(QVDFileNamesListNUM_Temp, '_', SUBSTRINGCOUNT(QVDFileNamesListNUM_Temp, '_')+1), '.qvd', 1) as QVDFileNamesListNUM
+	;
+	LOAD 
+		FileList as QVDFileNamesList,
+		SUBFIELD(FileList, '/', SUBSTRINGCOUNT(FileList, '/')+1) as QVDFileNamesListNUM_Temp
+	RESIDENT FileList_Temp ORDER BY FileList DESC;
+	DROP TABLE FileList_Temp;
 end sub;
 
 
@@ -454,11 +435,10 @@ parOPTIONALsubName  --> If you don't want "load *" and want only a restricted am
                         sub preceding this CALL with the fields called for in the load statement.
                         The "from"  source must be mentioned as "FROM [$(vQVDFileNamesList)] (QVD);".
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	25 October 2020
 */
 sub QVDFileNamesLoad(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles,parOPTIONALsubName)
-
     CALL QVDFileNamesList('$(parQVDTargetFolder)','$(parQVDNamePrefix)','$(parLoadLastNFiles)');
 
     FOR i=1 TO NoofRows('QVDFileNamesList')
@@ -487,7 +467,7 @@ Appropriate for getting distinct value in a large table, rather than using LOAD 
 sub-routine parameters:
 parField	--> Field for which you want 
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	18 September 2020
 */
 sub DistinctFieldValues(parField)
@@ -518,10 +498,9 @@ in case you need to call for a YYYYMM QVD with this field.
 sub-routine parameters:
 parDateFieldRequiringFill			--> Date field you want to check for missing data and find the cloest "next-day" substitute for.
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	11 November 2020
 */
-
 sub DatesToBeFilled(parDateFieldRequiringFill,parDESC_or_ASC_Date_Ordering)
     CALL DistinctFieldValues('$(parDateFieldRequiringFill)');
 
@@ -638,12 +617,10 @@ parTargetFolder 					--> The BIG QVD name.
 parDateFieldNameToCreateQVDSlices	--> The date field in the RESIDENT Table upon which you want to create the YYYYMM QVD slices.
 parPRIMARYkey                       --> PRIMARY KEY in source data (use the field name, if aliased, that is has in the QVD/output).
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	19 November 2020
 */
-
 sub QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
-
     CALL DistinctFieldValues('$(parDateFieldNameToCreateQVDSlices)');
 
     FOR i=1 TO NoOfRows('DistinctFieldValues')
@@ -688,11 +665,10 @@ parSourceQVDFile					--> The BIG QVD name.
 parTargetFolder						--> Root target folder.
 parDateFieldNameToCreateQVDSlices	--> The date field in the BIG QVD upon which you want to create the YYYYMM QVD slices.
 
-Author:	Cheenu Janakiram, cheenu.janakiram@fitchratings.com
+Author:	Cheenu Janakiram
 Date:	12 September 2020
 */
 sub QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
-
 	Temp01: LOAD * FROM [$(parSourceQVDFolder)/$(parSourceQVDFile).qvd] (QVD);
 
 	Temp02: NOCONCATENATE LOAD *, DATE(MONTHSTART([$(parDateFieldNameToCreateQVDSlices)]), 'YYYYMM') as [$(parDateFieldNameToCreateQVDSlices)_YYYYMM] RESIDENT Temp01;
@@ -720,4 +696,3 @@ sub QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder
 
 	DROP TABLE Temp02;
 end sub;
-
