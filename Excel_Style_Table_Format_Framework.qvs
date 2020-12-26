@@ -30,7 +30,8 @@ SET vExcelFileExtension = 'xlsm';
 NumFormat_Map:
 MAPPING
 LOAD * FROM
-[$(vDir_ReferenceFile)Excel_Style_Table_Format_Framework.$(vExcelFileExtension)] (ooxml, embedded labels, table is "Number_Format_Map")
+[$(vDir_ReferenceFile)Excel_Style_Table_Format_Framework.$(vExcelFileExtension)]
+(ooxml, embedded labels, table is "Number_Format_Map")
 WHERE LEN(NumFormat) > 0;
 
 
@@ -38,11 +39,13 @@ ExcelFormatTableBuild:
 LOAD
     //Table and reference info
     Table_Name,
+    //Referred to in the set analysis of front-end Qlik table:
     Table_ID,
+    //Used as DIM in the front-end Qlik table:
     Measure_Name,
+    //Referred to in the set analysis of Qlik KPIs:
     Measure_ID,
-
-    //Expression or figure in the cells
+    //Expression or figure in the source EXCEL cells which will populate the Qlik table
     IF(ISNULL(Expr01), NULL(), 'NUM((' & Expr01 & ApplyMap('NumFormat_Map', Expr01_NumFormat)) as Expr01,
     IF(ISNULL(Expr02), NULL(), 'NUM((' & Expr02 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr02_NumFormat), Expr01_NumFormat, Expr02_NumFormat))) as Expr02,
  	IF(ISNULL(Expr03), NULL(), 'NUM((' & Expr03 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr03_NumFormat), Expr01_NumFormat, Expr03_NumFormat))) as Expr03,
@@ -55,7 +58,7 @@ LOAD
     IF(ISNULL(Expr10), NULL(), 'NUM((' & Expr10 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr10_NumFormat), Expr01_NumFormat, Expr10_NumFormat))) as Expr10,
     IF(ISNULL(Expr11), NULL(), 'NUM((' & Expr11 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr11_NumFormat), Expr01_NumFormat, Expr11_NumFormat))) as Expr11,
 
-    //Number format for the cells
+    //Number format for the Qlik table cells
     Expr01_NumFormat,
     IF(ISNULL(Expr02_NumFormat), Expr01_NumFormat, Expr02_NumFormat) as Expr02_NumFormat,
     IF(ISNULL(Expr03_NumFormat), Expr01_NumFormat, Expr03_NumFormat) as Expr03_NumFormat,
@@ -69,11 +72,11 @@ LOAD
     IF(ISNULL(Expr11_NumFormat), Expr01_NumFormat, Expr11_NumFormat) as Expr11_NumFormat,
 
 
-     //Backround colour for the dimension cells
+     //Backround colour for the dimension cells in the Qlik table
      //Text colour for the dimension cells
     IF(ISNULL(Expr00_CellBackground), WHITE(), Expr00_CellBackground) as Expr00_CellBackground,
 
-     //Backround colour for the cells
+     //Backround colour for the (expression) cells in the Qlik table
     Expr01_CellBackground,
     Expr02_CellBackground,
     Expr03_CellBackground,
@@ -118,29 +121,27 @@ LOAD
     "Variable Definition"		as var_value
 FROM [$(vDir_ReferenceFile)Excel_Style_Table_Format_Framework.$(vExcelFileExtension)]
 (ooxml, embedded labels, table is FrontEnd_Variable)
-Where
-	( Len("Variable Name") > 0 )
-    and ( Len("Variable Definition") > 0 )
+WHERE
+	( LEN( "Variable Name" ) > 0 )
+    AND ( LEN ( "Variable Definition" ) > 0 )
 ;
 
 // Loop through all variable definitions and create them
 For i = 0 to ( NoOfRows('VarExp') - 1)
-
-	Let vVarName = Text(Peek('var_name',$(i),'VarExp'));
-    Let vVarValue = Text(Peek('var_value',$(i),'VarExp'));
-    Let vVarRunDuringReload = Upper(Peek('var_run_during_reload',$(i),'VarExp'));
+	LET vVarName = Text(Peek('var_name',$(i),'VarExp'));
+    LET vVarValue = Text(Peek('var_value',$(i),'VarExp'));
+    LET vVarRunDuringReload = Upper(Peek('var_run_during_reload',$(i),'VarExp'));
     
-    If( vVarRunDuringReload = 'YES' ) Then
+    IF ( vVarRunDuringReload = 'YES' ) THEN
     	Trace Variable $(vVarName) is being interpreted during reload;
-    	Let $(vVarName) = $(vVarValue);
-    Else
-    	Let $(vVarName) = Peek('var_value',$(i),'VarExp');
-    EndIf
-
-Next i;
+    	LET $(vVarName) = $(vVarValue);
+    ELSE
+    	LET $(vVarName) = Peek('var_value',$(i),'VarExp');
+    END IF;
+NEXT i;
 
 // Drop
-Drop Table VarExp;
+DROP TABLE VarExp;
 
 TRACE 
 ;
