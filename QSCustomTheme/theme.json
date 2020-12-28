@@ -1,0 +1,1112 @@
+{
+    "_cards": false,
+    "_inherit": true,
+    "_variables": {
+        "@samsungblue-100": "#1428A0",
+        "@amsungblue-75": "#4F5EB8",
+        "@samsungblue-55": "#7E89CB",
+        "@samsungblue-40": "#A1A9D9",
+        "@samsungblue-25": "#C5CAE8",
+        "@skyblue-100": "#0077C8",
+        "@skyblue-75": "#4099D6",
+        "@skyblue-55": "#73B4E1",
+        "@skyblue-40": "#99C9E9",
+        "@skyblue-25": "#C0DDF1",
+        "@clover-100": "#97D652",
+        "@clover-75": "#B1E07D",
+        "@clover-55": "#C6E8A0",
+        "@clover-40": "#D5EFBA",
+        "@clover-25": "#E5F5D4",
+        "@seablue-100": "#00B3E3",
+        "@seablue-75": "#40C6EA",
+        "@seablue-55": "#73D5F0",
+        "@seablue-40": "#99E1F4",
+        "@seablue-25": "#C0ECF8",
+        "@saffron-100": "#FFB546",
+        "@saffron-75": "#FFC874",
+        "@saffron-55": "#FFD699",
+        "@saffron-40": "#FFE1B5",
+        "@saffron-25": "#FFEDD1",
+        "@teal-100": "#00C3B2",
+        "@teal-75": "#40D2C5",
+        "@teal-55": "#73DED5",
+        "@teal-40": "#99E7E0",
+        "@teal-25": "#C0F0EC",
+        "@coral-100": "#FF4337",
+        "@coral-75": "#FF7269",
+        "@coral-55": "#FF9891",
+        "@coral-40": "#FFB4AF",
+        "@coral-25": "#FFD1CE",
+        "@white": "#FFFFFF",
+        "@black": "#000000",
+        "@gray1": "#2E2C2B",
+        "@gray2": "#6E6A69",
+        "@gray3": "#D7D2CB",
+        "@gray4": "#F7F3F0",
+        "@TitleSize": "16px",
+        "@TitleColor": "#6E6A69",
+        "@SubtitleSize": "14px",
+        "@SubtitleColor": "#6E6A69",
+        "@TextSize": "14px",
+        "@TextColor": "#000000",
+        "@FooterColor": "#6E6A69",
+        "@FooterSize": "10px",
+        "@LabelColor": "#6E6A69",
+        "@LabelSize": "14px",
+        "@BackgroundColor": "#FFFFFF",
+        "@AxisMajorColor": "#6E6A69",
+        "@AxisMinorColor": "#6E6A69",
+        "@AxisSize": "14px",
+        "@H1": "24px",
+        "@H2": "18px",
+        "@H3": "14px",
+        "@H4": "13px",
+        "@H5": "12px",
+        "@H6": "10px"
+    },
+    "customStyles": [
+        {
+            "cssRef": "theme.css",
+            "classRef": "sense-theme"
+        }
+    ],
+    "color": "@TextColor",
+    "fontSize": "@TextSize",
+    "backgroundColor": "@BackgroundColor",
+    "dataColors": {
+        "primaryColor": "#1428A0",
+        "othersColor": "#0077C8",
+        "errorColor": "#FF4337",
+        "nullColor": "#FFB546"
+    },
+    "object": {
+        "title": {
+            "main": {
+                "color": "@TitleColor",
+                "fontSize": "@TitleSize"
+            },
+            "subTitle": {
+                "color": "@SubtitleColor",
+                "fontSize": "@SubtitleSize"
+            },
+            "footer": {
+                "color": "@FooterColor",
+                "fontSize": "@FooterSize",
+                "backgroundColor": "@white"
+            }
+        },
+        "label": {
+            "name": {
+                "color": "@LabelColor",
+                "fontSize": "@LabelSize"
+            },
+            "value": {
+                "color": "@black",
+                "fontSize": "@H6"
+            }
+        },
+        "axis": {
+            "title": {
+                "fontSize": "@AxisSize",
+                "color": "@AxisMajorColor"
+            },
+            "label": {
+                "name": {
+                    "color": "@LabelColor",
+                    "fontSize": "@LabelSize"
+                }
+            },
+            "line": {
+                "major": {
+                    "color": "@AxisMajorColor"
+                },
+                "minor": {
+                    "color": "@AxisMinorColor"
+                }
+            }
+        },
+        "grid": {
+            "line": {
+                "highContrast": {
+                    "color": "@AxisMajorColor"
+                },
+                "major": {
+                    "color": "@AxisMajorColor"
+                },
+                "minor": {
+                    "color": "@AxisMinorColor"
+                }
+            }
+        },
+        "referenceLine": {
+            "label": {
+                "name": {
+                    "color": "@saffron-100",
+                    "fontSize": "@H4"
+                }
+            },
+            "outOfBounds": {
+                "color": "@seablue-100",
+                "backgroundColor": "@seablue-75",
+                "fontSize": "@H6"
+            }
+        },
+        "legend": {
+            "title": {
+                "color": "@SubtitleColor",
+                "fontSize": "@SubtitleSize"
+            },
+            "label": {
+                "color": "@LabelColor",
+                "fontSize": "@LabelSize"
+            }
+        },
+        "barChart": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@AxisSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "legend": {
+                "title": {
+                    "fontSize": "@SubtitleSize",
+                    "color": "@SubtitleColor"
+                },
+                "label": {
+                    "fontSize": "@LabelSize",
+                    "color": "@LabelColor"
+                }
+            },
+            "label": {
+                "value": {
+                    "fontSize": "@LabelSize",
+                    "color": "@LabelColor"
+                }
+            },
+            "outOfRange": {
+                "color": "@samsungblue-100"
+            }
+        },
+        "boxPlot": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@AxisSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "box": {
+                "whisker": {
+                    "stroke": "@skyblue-100"
+                },
+                "line": {
+                    "stroke": "@saffron-100"
+                },
+                "box": {
+                    "fill": "@teal-100",
+                    "stroke": "@samsungblue-100"
+                }
+            }
+        },
+        "comboChart": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@AxisSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "legend": {
+                "title": {
+                    "fontSize": "@SubtitleSize",
+                    "color": "@SubtitleColor"
+                },
+                "label": {
+                    "fontSize": "@LabelSize",
+                    "color": "@LabelColor"
+                }
+            }
+        },
+        "distributionPlot": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@AxisSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "box": {
+                "fill": "@teal-100"
+            }
+        },
+        "filterpane": {
+            "backgroundColor": "samsungblue-25",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            }
+        },
+        "gauge": {
+            "backgroundColor": "@samsungblue-25",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@AxisSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "label": {
+                "value": {
+                    "color": "@LabelColor"
+                }
+            }
+        },
+        "histogram": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@TextSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "label": {
+                "value": {
+                    "color": "@LabelColor",
+                    "fontSize": "40px"
+                }
+            }
+        },
+        "kpi": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@H1"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "TitleSize",
+                    "backgroundColor": "@white"
+                }
+            }
+        },
+        "lineChart": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@AxisSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "legend": {
+                "title": {
+                    "fontSize": "@SubtitleSize",
+                    "color": "@SubtitleColor"
+                },
+                "label": {
+                    "fontSize": "@LabelSize",
+                    "color": "@LabelColor"
+                }
+            },
+            "outOfRange": {
+                "color": "@samsungblue-100"
+            },
+            "label": {
+                "value": {
+                    "color": "@saffron-100",
+                    "fontSize": "@LabelSize"
+                }
+            }
+        },
+        "listBox": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                }
+            },
+            "content": {
+                "color": "@black",
+                "fontSize": "@TextSize"
+            }
+        },
+        "mapChart": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            }
+        },
+        "pieChart": {
+            "backgroundColor": "white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "color": "@AxisMajorColor",
+                    "fontSize": "@AxisSize"
+                }
+            },
+            "legend": {
+                "title": {
+                    "fontSize": "@SubtitleSize",
+                    "color": "@SubtitleColor"
+                },
+                "label": {
+                    "fontSize": "@LabelSize",
+                    "color": "@LabelColor"
+                }
+            },
+            "label": {
+                "name": {
+                    "color": "@LabelColor",
+                    "fontSize": "@LabelSize"
+                },
+                "value": {
+                    "color": "@black",
+                    "fontSize": "@TextSize"
+                }
+            }
+        },
+        "pivotTable": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "header": {
+                "fontSize": "@H3",
+                "color": "@black"
+            },
+            "content": {
+                "fontSize": "@H3",
+                "color": "@black"
+            }
+        },
+        "scatterPlot": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@AxisSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "legend": {
+                "title": {
+                    "fontSize": "@SubtitleSize",
+                    "color": "@SubtitleColor"
+                },
+                "label": {
+                    "fontSize": "@LabelSize",
+                    "color": "@LabelColor"
+                }
+            },
+            "label": {
+                "value": {
+                    "color": "@LabelColor",
+                    "fontSize": "@LabelSize"
+                }
+            }
+        },
+        "straightTable": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "header": {
+                "fontSize": "@H3",
+                "color": "@black"
+            },
+            "content": {
+                "fontSize": "@H4",
+                "color": "@black"
+            }
+        },
+        "textImage": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                },
+                "content": {
+                    "fontSize": "@H4",
+                    "color": "@samsungblue-100"
+                }
+            }
+        },
+        "treemap": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "legend": {
+                "title": {
+                    "fontSize": "@SubtitleSize",
+                    "color": "@SubtitleColor"
+                },
+                "label": {
+                    "fontSize": "@LabelSize",
+                    "color": "@LabelColor"
+                }
+            },
+            "branch": {
+                "backgroundColor": "@samsungblue-100",
+                "label": {
+                    "color": "@gray4",
+                    "fontSize": "@TextSize"
+                }
+            },
+            "leaf": {
+                "label": {
+                    "fontSize": "@TextSize"
+                }
+            }
+        },
+        "waterfallChart": {
+            "backgroundColor": "@white",
+            "title": {
+                "main": {
+                    "color": "@TitleColor",
+                    "fontSize": "@TitleSize"
+                },
+                "subTitle": {
+                    "color": "@SubtitleColor",
+                    "fontSize": "@SubtitleSize"
+                },
+                "footer": {
+                    "color": "@FooterColor",
+                    "fontSize": "@FooterSize",
+                    "backgroundColor": "@white"
+                }
+            },
+            "axis": {
+                "title": {
+                    "fontSize": "@AxisSize",
+                    "color": "@AxisMajorColor"
+                },
+                "label": {
+                    "name": {
+                        "color": "@LabelColor",
+                        "fontSize": "@LabelSize"
+                    }
+                },
+                "line": {
+                    "major": {
+                        "color": "@AxisMajorColor"
+                    },
+                    "minor": {
+                        "color": "@AxisMinorColor"
+                    }
+                }
+            },
+            "legend": {
+                "label": {
+                    "fontSize": "@SubtitleSize",
+                    "color": "@SubtitleColor"
+                }
+            },
+            "label": {
+                "value": {
+                    "fontSize": "@LabelSize"
+                }
+            },
+            "value": {
+                "color": {
+                    "default": "@samsungblue-100",
+                    "dark": "@gray2",
+                    "light": "@gray4"
+                }
+            },
+            "shape": {
+                "positiveValue": {
+                    "fill": "@white"
+                },
+                "negativeValue": {
+                    "fill": "@coral-100"
+                },
+                "subtotal": {
+                    "fill": "#000000"
+                },
+                "bridge": {
+                    "stroke": "@saffron-100"
+                }
+            }
+        }
+    },
+    "palettes": {
+        "data": [
+            {
+                "name": "Base Palette",
+                "translation": "Base Palette",
+                "propertyValue": "30",
+                "type": "row",
+                "scale": [
+                    "#0077C8",
+                    "#97D652",
+                    "#00B3E3",
+                    "#FFB546",
+                    "#00C3B2",
+                    "#FF4337",
+                    "#4099D6",
+                    "#B1E07D",
+                    "#40C6EA",
+                    "#FFC874",
+                    "#40D2C5",
+                    "#FF7269",
+                    "#73B4E1",
+                    "#C6E8A0",
+                    "#73D5F0",
+                    "#FFD699",
+                    "#73DED5",
+                    "#FF9891",
+                    "#99C9E9",
+                    "#D5EFBA",
+                    "#99E1F4",
+                    "#FFE1B5",
+                    "#99E7E0",
+                    "#FFB4AF",
+                    "#C0DDF1",
+                    "#E5F5D4",
+                    "#C0ECF8",
+                    "#FFEDD1",
+                    "#C0F0EC",
+                    "#FFD1CE"
+                ]
+            },
+            {
+                "name": "Alternate Palette",
+                "translation": "Alternate Palette",
+                "propertyValue": "35",
+                "type": "row",
+                "scale": [
+                    "#1428A0",
+                    "#0077C8",
+                    "#97D652",
+                    "#00B3E3",
+                    "#C800A1",
+                    "#00C3B2",
+                    "#685BC7",
+                    "#4F5EB8",
+                    "#4099D6",
+                    "#B1E07D",
+                    "#40C6EA",
+                    "#D640B9",
+                    "#40D2C5",
+                    "#8E84D5",
+                    "#7E89CB",
+                    "#73B4E1",
+                    "#C6E8A0",
+                    "#73D5F0",
+                    "#E173CB",
+                    "#73DED5",
+                    "#ACA5E0",
+                    "#A1A9D9",
+                    "#99C9E9",
+                    "#D5EFBA",
+                    "#99E1F4",
+                    "#E999D9",
+                    "#99E7E0",
+                    "#C3BDE9",
+                    "#C5CAE8",
+                    "#C0DDF1",
+                    "#E5F5D4",
+                    "#C0ECF8",
+                    "#F1C0E8",
+                    "#C0F0EC",
+                    "#DAD6F1"
+                ]
+            },
+            {
+                "name": "Palette 14 colours",
+                "translation": "Palette 14 colours",
+                "propertyValue": "14",
+                "type": "row",
+                "scale": [
+                    "#0077C8",
+                    "#97D652",
+                    "#00B3E3",
+                    "#FFB546",
+                    "#00C3B2",
+                    "#C800A1",
+                    "#685BC7",
+                    "#4099D6",
+                    "#B1E07D",
+                    "#40C6EA",
+                    "#FFC874",
+                    "#40D2C5",
+                    "#D640B9",
+                    "#8E84D5"
+                ]
+            },
+            {
+                "name": "Cool colors 20",
+                "translation": "Cool colors 20",
+                "propertyValue": "20",
+                "type": "row",
+                "scale": [
+                    "#1428A0",
+                    "#0077C8",
+                    "#00B3E3",
+                    "#00C3B2",
+                    "#4F5EB8",
+                    "#4099D6",
+                    "#40C6EA",
+                    "#40D2C5",
+                    "#7E89CB",
+                    "#73B4E1",
+                    "#73D5F0",
+                    "#73DED5",
+                    "#A1A9D9",
+                    "#99C9E9",
+                    "#99E1F4",
+                    "#99E7E0",
+                    "#C5CAE8",
+                    "#C0DDF1",
+                    "#C0ECF8",
+                    "#C0F0EC"
+                ]
+            },
+            {
+                "name": "Warm colours",
+                "translation": "Warm colours",
+                "propertyValue": "10",
+                "type": "row",
+                "scale": [
+                    "#FFB546",
+                    "#FF4337",
+                    "#FFC874",
+                    "#FF7269",
+                    "#FFD699",
+                    "#FF9891",
+                    "#FFE1B5",
+                    "#FFB4AF",
+                    "#FFEDD1",
+                    "#FFD1CE"
+                ]
+            }
+        ],
+        "ui": [
+            {
+                "name": "Full Corp Palette",
+                "colors": [
+                    "#1428A0",
+                    "#0077C8",
+                    "#97D652",
+                    "#00B3E3",
+                    "#C800A1",
+                    "#00C3B2",
+                    "#685BC7",
+                    "#FFB546",
+                    "#FF4337",
+                    "#4F5EB8",
+                    "#4099D6",
+                    "#B1E07D",
+                    "#40C6EA",
+                    "#D640B9",
+                    "#40D2C5",
+                    "#8E84D5",
+                    "#FFC874",
+                    "#FF7269",
+                    "#7E89CB",
+                    "#73B4E1",
+                    "#C6E8A0",
+                    "#73D5F0",
+                    "#E173CB",
+                    "#73DED5",
+                    "#ACA5E0",
+                    "#FFD699",
+                    "#FF9891",
+                    "#A1A9D9",
+                    "#99C9E9",
+                    "#D5EFBA",
+                    "#99E1F4",
+                    "#E999D9",
+                    "#99E7E0",
+                    "#C3BDE9",
+                    "#FFE1B5",
+                    "#FFB4AF",
+                    "#C5CAE8",
+                    "#C0DDF1",
+                    "#E5F5D4",
+                    "#C0ECF8",
+                    "#F1C0E8",
+                    "#C0F0EC",
+                    "#DAD6F1",
+                    "#FFEDD1",
+                    "#FFD1CE"
+                ]
+            }
+        ]
+    },
+    "scales": [
+        {
+            "name": "SkyBlue Teal colors sequential gradient",
+            "translation": "SkyBlue Teal colors sequential gradient",
+            "type": "gradient",
+            "propertyValue": "sg",
+            "scale": [
+                "#0077C8",
+                "#00C3B2"
+            ]
+        },
+        {
+            "name": "SeaBlue Clover colors sequential classes",
+            "translation": "SeaBlue Clover colors sequential classes",
+            "propertyValue": "sc",
+            "type": "class",
+            "scale": [
+                "#00B3E3",
+                "#97D652"
+            ]
+        },
+        {
+            "name": "Samsung Blues diverging gradient",
+            "translation": "Samsung Blues diverging gradient",
+            "propertyValue": "dg",
+            "type": "class",
+            "scale": [
+                "#1428A0",
+                "#C5CAE8"
+            ]
+        },
+        {
+            "name": "Saffron Coral colors diverging classes",
+            "translation": "Saffron Coral colors diverging classes",
+            "type": "gradient",
+            "propertyValue": "dc",
+            "scale": [
+                "#FFB546",
+                "#FF4337"
+            ]
+        },
+        {
+            "name": "RAG colors diverging classes",
+            "translation": "RAG Coral colors diverging classes",
+            "type": "gradient",
+            "propertyValue": "dc",
+            "scale": [
+                "#97D652",
+                "#FFB546",
+                "#FF4337"
+            ]
+        }
+    ]
+}
