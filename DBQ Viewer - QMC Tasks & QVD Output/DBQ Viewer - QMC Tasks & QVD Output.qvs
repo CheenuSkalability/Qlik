@@ -77,7 +77,6 @@ IF ($(vQVDInfoUpdate) > 0) OR ('$(vRunQVDsNow)' = 'Yes') THEN
 
     FOR z=1 TO NoOfRows('Full_Paths_To_Folder')
         LET vFullPathToFolder = PEEK('Full_Paths_To_Folder', $(z)-1, 'Full_Paths_To_Folder');
-
         //Generate Sub
         sub ScanFolder(Root)
             FOR EACH FileExtension IN 'qvd'
@@ -183,7 +182,6 @@ IF ($(vQVDInfoUpdate) > 0) OR ('$(vRunQVDsNow)' = 'Yes') THEN
         Month(CreateUtcTime) as Month,
         Year(CreateUtcTime) as Year,
         Hour(CreateUtcTime) as Hour,
-//        Date(NOW(), 'DD-MMM-YYYY') as Date_QVDTableHeaderScan,
         DATE(NOW(), 'DD-MMM-YYYY HH:mm') as DateTime_QVDTableHeaderScan
     RESIDENT QvdTableHeader_Temp;
 
@@ -220,7 +218,7 @@ LOAD
 ;
 LOAD 
 	 ApplyMap('App_Name_Map', ObjectId, NULL()) as [Task App Name],
-     Date(/*MAX*/([App Last Reload Time]), 'YYYY-MM-DD HH:mm:ss') as [App Last Reload Time]
+     Date(([App Last Reload Time]), 'YYYY-MM-DD HH:mm:ss') as [App Last Reload Time]
 FROM [$(vQMC_QVD_Store)/App.qvd] (QVD);
 
 App_Info:
@@ -275,32 +273,26 @@ LOAD
     Time([Reload Finish], 'HH:mm:ss') as [Reload Finish Time];
 LOAD 
 	ApplyMap('TaskId_Map', _proxySessionPackage) as TaskId,
-//     _reloadSummaryTaskId as TaskId,
-     Date(([Reload Finish]), 'YYYY-MM-DD HH:mm:ss') as [Reload Finish] //-->OLD/Original
-     //Date((ConvertToLocalTime([Reload Finish] + 1/6, 'London')), 'YYYY-MM-DD HH:mm:ss') as [Reload Finish]
+     Date(([Reload Finish]), 'YYYY-MM-DD HH:mm:ss') as [Reload Finish]
 FROM [$(vQMC_QVD_Store)/ReloadSummary.qvd] (QVD)
-WHERE EXISTS(TaskId, ApplyMap('TaskId_Map', _proxySessionPackage));//_reloadSummaryTaskId);
+WHERE EXISTS(TaskId, ApplyMap('TaskId_Map', _proxySessionPackage));
 
 
 Reload_Summary_Info:
 LOAD
 	*,
 	AutoNumber(
-    //HOUR(ConvertToLocalTime([Reload Start Time] + 1/6, 'London'))
     	IF(Hour([Reload Start Time]) >= 19, NUM(DayStart(Date([Reload Start], 'YYYY-MM-DD'))),
         NUM(DayStart(Date([Reload Start], 'YYYY-MM-DD'))) -1)
     , 27) as TaskSortOrder;
 LOAD
 	Date([Reload Finish], 'YYYY-MM-DD HH:mm:ss') & '_' & ApplyMap('TaskId_Map', _proxySessionPackage)/*_reloadSummaryTaskId*/ as %FK02,
-	[Reload Start],  //-->OLD/Original
-    //Date((ConvertToLocalTime([Reload Start] + 1/6, 'London')), 'YYYY-MM-DD HH:mm:ss') as [Reload Start],
+	[Reload Start],
     Date(floor([Reload Start]), 'DD-MMM-YYYY') as [Reload Start Date],
     Time([Reload Start], 'HH:mm:ss') as [Reload Start Time],
 	[Reload Status],
     PICK(MATCH([Reload Status], 'Success', 'Failed', 'Aborted'), 1,2,3) as ReloadStatusNUM,
-    //Adjustment for clock change
     [Reload Duration]
-//	IF([Reload Duration] < 0, 1/24 + [Reload Duration], [Reload Duration]) as  [Reload Duration]
 FROM [$(vQMC_QVD_Store)/ReloadSummary.qvd] (QVD)
 WHERE EXISTS(%FK02, Date([Reload Finish], 'YYYY-MM-DD HH:mm:ss') & '_' & ApplyMap('TaskId_Map', _proxySessionPackage));//_reloadSummaryTaskId);
 
@@ -330,106 +322,95 @@ END IF;
 //IF clause meant for the whole of tabs until "Script Log Analysis --> END PREP"
 IF '$(vRunLogAnalysis)' = 'Yes' THEN
 
-    //SET ErrorMode = 0;
-    ////TRACE ************* Start of Store Governance QVDs *************;
-    //LET vNumTables = NoOfTables();
-    //
-    //FOR k=0 TO $(vNumTables)-1
-    //   	LET vTable_To_QVD = TableName($(k));
-    //	STORE [$(vTable_To_QVD)] INTO [$(vQMC_QVD_Store)/$(vTable_To_QVD).qvd] (QVD);
-    //NEXT k;
-    //
-    //SET vNumTables = '';
-    ////TRACE ************* End of Store Governance QVDs *************;
-    //SET ErrorMode = 1;
+    GUID_Map:
+    MAPPING LOAD DISTINCT 
+        [App Name], 
+        AppId as GUID
+    FROM [$(vQMC_QVD_Store)/AppName.qvd] (qvd);
 
-      GUID_Map:
-      MAPPING LOAD DISTINCT 
-           [App Name], 
-           AppId as GUID
-      FROM [$(vQMC_QVD_Store)/AppName.qvd] (qvd);
+    Task_AppMap_Temp:
+    NOCONCATENATE
+    LOAD
+        TaskId, 
+        [Task Name]
+    FROM [$(vQMC_QVD_Store)/TaskName.qvd] (qvd);
 
-      Task_AppMap_Temp:
-      NOCONCATENATE
-      LOAD TaskId, 
-           [Task Name]
-      FROM [$(vQMC_QVD_Store)/TaskName.qvd] (qvd);
+    LEFT JOIN(Task_AppMap_Temp)
+    LOAD
+        TaskId, 
+        [Task App Name]
+    FROM [$(vQMC_QVD_Store)/Task.qvd] (qvd);
 
-      LEFT JOIN(Task_AppMap_Temp)
-      LOAD TaskId, 
-           [Task App Name]
-      FROM [$(vQMC_QVD_Store)/Task.qvd] (qvd);
+    App_Map:
+    MAPPING LOAD
+        [Task Name] as X1,
+        [Task App Name] as X2
+    RESIDENT Task_AppMap_Temp;
 
-      App_Map:
-      MAPPING LOAD
-          [Task Name] as X1,
-          [Task App Name] as X2
-      RESIDENT Task_AppMap_Temp;
-
-      DROP TABLE Task_AppMap_Temp;
-
-      FOR EACH file in FileList('$(vScriptLogFolder)/*.log')
-              LoadingFromQVD_Temp:
-              FIRST 1
-              LOAD @1 as TimeStamp, 
-                   '0001' as OriginalLineIndex,
-                   TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8) as FullLine,
-                   '$(file)' as LogFile
-              FROM [$(file)]
-              (txt, utf8, no labels, delimiter is ' ', msq);
-      NEXT file;
-
-      FOR EACH file in FileList('$(vScriptLogFolder)/*.log')
-              LoadingFromQVD_Temp:
-              //FIRST 1
-              LOAD @1 as TimeStamp, 
-                   '9999' as OriginalLineIndex,
-                   TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8) as FullLine,
-                   '$(file)' as LogFile
-              FROM [$(file)]
-              (txt, utf8, no labels, delimiter is ' ', msq)
-              WHERE WILDMATCH(TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8), '*execution finished*') <>  0;
-      NEXT file;
-
-
-      FOR EACH file in FileList('$(vScriptLogFolder)/*.log')
-
-              LoadingFromQVD_Temp01:
-              LOAD *, IF(LEN(TRIM(LineIndexTemp05)) > 0, LineIndexTemp05, PEEK(LineIndexTemp05)) as LineIndexTemp06;
-              LOAD *, IF(LEN(TRIM(LineIndexTemp04)) > 0, LineIndexTemp04, PEEK(LineIndexTemp04)) as LineIndexTemp05;
-              LOAD *, IF(LEN(TRIM(LineIndexTemp03)) > 0, LineIndexTemp03, PEEK(LineIndexTemp03)) as LineIndexTemp04;
-              LOAD *,	IF(LEN(TRIM(LineIndexTemp02)) > 0, LineIndexTemp02, PEEK(LineIndexTemp02)) as LineIndexTemp03;
-              LOAD *, IF(LEN(TRIM(LineIndexTemp01)) > 0, LineIndexTemp01, PEEK(LineIndexTemp01)) as LineIndexTemp02;
-              LOAD *, IF(LEN(TRIM(OriginalLineIndex)) > 0, OriginalLineIndex, PEEK(OriginalLineIndex)) as LineIndexTemp01
-              WHERE WILDMATCH(FullLine, 'from *', 'resident *', /*'where *',*/ '* lines',  'call *',  'store *') <> 0 //'* fields',
-              AND WILDMATCH(FullLine, '*1 fields*', '*1 lines*') = 0
-              ;
-              LOAD @1 as TimeStamp, 
-                   @2 as OriginalLineIndex,
-                   TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8) as FullLine,
-                   '$(file)' as LogFile
-              FROM [$(file)]
-              (txt, utf8, no labels, delimiter is ' ', msq);
-      NEXT file;
-
-
-      CONCATENATE (LoadingFromQVD_Temp) LOAD * RESIDENT LoadingFromQVD_Temp01;
-      DROP TABLE LoadingFromQVD_Temp01;
+    DROP TABLE Task_AppMap_Temp;
 
     FOR EACH file in FileList('$(vScriptLogFolder)/*.log')
-            LoadingFromQVD_Temp_WHEREClauses:
-            LOAD *, //IF(LEN(TRIM(WHERE_OriginalLineIndex)) > 0, WHERE_OriginalLineIndex, PEEK(WHERE_OriginalLineIndex)) 
-            RIGHT('0000' & (TEXT(WHERE_OriginalLineIndex - 1)), 4) as WHERE_LineIndex_JOIN
-            WHERE WILDMATCH(WHERE_FullLine, 'where *') <> 0 //'* fields',
-            ;
-            LOAD @1 as WHERE_TimeStamp, 
-                 @2 as WHERE_OriginalLineIndex,
-                 TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8) as WHERE_FullLine,
-                 '$(file)' as LogFile
-            FROM [$(file)]
-            (txt, utf8, no labels, delimiter is ' ', msq);
+        LoadingFromQVD_Temp:
+        FIRST 1
+        LOAD
+            @1 as TimeStamp, 
+            '0001' as OriginalLineIndex,
+            TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8) as FullLine,
+            '$(file)' as LogFile
+        FROM [$(file)]
+        (txt, utf8, no labels, delimiter is ' ', msq);
     NEXT file;
 
+    FOR EACH file in FileList('$(vScriptLogFolder)/*.log')
+        LoadingFromQVD_Temp:
+        LOAD
+            @1 as TimeStamp, 
+            '9999' as OriginalLineIndex,
+            TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8) as FullLine,
+            '$(file)' as LogFile
+        FROM [$(file)]
+        (txt, utf8, no labels, delimiter is ' ', msq)
+        WHERE WILDMATCH(TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8), '*execution finished*') <>  0;
+    NEXT file;
+
+    FOR EACH file in FileList('$(vScriptLogFolder)/*.log')
+        LoadingFromQVD_Temp01:
+        LOAD *, IF(LEN(TRIM(LineIndexTemp05)) > 0, LineIndexTemp05, PEEK(LineIndexTemp05)) as LineIndexTemp06;
+        LOAD *, IF(LEN(TRIM(LineIndexTemp04)) > 0, LineIndexTemp04, PEEK(LineIndexTemp04)) as LineIndexTemp05;
+        LOAD *, IF(LEN(TRIM(LineIndexTemp03)) > 0, LineIndexTemp03, PEEK(LineIndexTemp03)) as LineIndexTemp04;
+        LOAD *,	IF(LEN(TRIM(LineIndexTemp02)) > 0, LineIndexTemp02, PEEK(LineIndexTemp02)) as LineIndexTemp03;
+        LOAD *, IF(LEN(TRIM(LineIndexTemp01)) > 0, LineIndexTemp01, PEEK(LineIndexTemp01)) as LineIndexTemp02;
+        LOAD *, IF(LEN(TRIM(OriginalLineIndex)) > 0, OriginalLineIndex, PEEK(OriginalLineIndex)) as LineIndexTemp01
+        WHERE WILDMATCH(FullLine, 'from *', 'resident *', /*'where *',*/ '* lines',  'call *',  'store *') <> 0 //'* fields',
+        AND WILDMATCH(FullLine, '*1 fields*', '*1 lines*') = 0
+        ;
+        LOAD
+            @1 as TimeStamp, 
+            @2 as OriginalLineIndex,
+            TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8) as FullLine,
+            '$(file)' as LogFile
+        FROM [$(file)]
+        (txt, utf8, no labels, delimiter is ' ', msq);
+    NEXT file;
+
+    CONCATENATE (LoadingFromQVD_Temp) LOAD * RESIDENT LoadingFromQVD_Temp01;
+    DROP TABLE LoadingFromQVD_Temp01;
+
+    FOR EACH file in FileList('$(vScriptLogFolder)/*.log')
+        LoadingFromQVD_Temp_WHEREClauses:
+        LOAD
+            *, 
+            RIGHT('0000' & (TEXT(WHERE_OriginalLineIndex - 1)), 4) as WHERE_LineIndex_JOIN
+        WHERE WILDMATCH(WHERE_FullLine, 'where *') <> 0
+        ;
+        LOAD
+            @1 as WHERE_TimeStamp, 
+            @2 as WHERE_OriginalLineIndex,
+            TRIM(@3 & ' ' & @4 & ' ' & @5 & ' ' & @6 & ' ' & @7 & ' ' & @8) as WHERE_FullLine,
+            '$(file)' as LogFile
+        FROM [$(file)]
+        (txt, utf8, no labels, delimiter is ' ', msq);
+    NEXT file;
 
     /*
     List below all the type of key terms that this log analyser should look for in logs.
@@ -467,19 +448,16 @@ IF '$(vRunLogAnalysis)' = 'Yes' THEN
     LET vCategorisation = PEEK('Categorisation', 0, 'Categorisation');
     DROP TABLE Categorisation;
 
-
     DROP TABLE Script_KeyWords_Categorisation_List;
 
-
     //checking for WHERE clauses in script
-
     Check01:
     //WHERE_Clause_Check:
     LOAD 
         LogFile & '_' & WHERE_LineIndex_JOIN as Check01
     RESIDENT LoadingFromQVD_Temp_WHEREClauses;
-    DROP TABLE LoadingFromQVD_Temp_WHEREClauses;
 
+    DROP TABLE LoadingFromQVD_Temp_WHEREClauses;
 
     LoadingFromQVD:
     LOAD
@@ -495,7 +473,7 @@ IF '$(vRunLogAnalysis)' = 'Yes' THEN
             IF(WILDMATCH(QVD_Interaction, 'CALL SUB*') <> 0,
                     SUBFIELD(REPLACE(FullLine, '\', '/'), CHR(39), 2) & '/' & SUBFIELD(REPLACE(FullLine, '\', '/'), CHR(39), 4) & '.qvd' )
         ) as QVD_FilePath,
-            IF(QVD_Interaction = 'Rows Loaded', KEEPCHAR(FullLine, '1234567890')) as RowsLoaded
+        IF(QVD_Interaction = 'Rows Loaded', KEEPCHAR(FullLine, '1234567890')) as RowsLoaded
     ;
     LOAD
         FullLine,
@@ -505,9 +483,9 @@ IF '$(vRunLogAnalysis)' = 'Yes' THEN
             IF(WILDMATCH(FullLine, '*execution finished*') <> 0, 9999,
                 LineIndexTemp06)) as LineIndex,
         SUBFIELD(SUBFIELD(LogFile, '/', SubStringCount(LogFile, '/')+1), '.log', 1) as ScriptName,
-            PICK(WILDMATCH(FullLine, $(vWildMatchString01)), $(vCategorisation)) as QVD_Interaction
-    RESIDENT LoadingFromQVD_Temp
-    ;
+        PICK(WILDMATCH(FullLine, $(vWildMatchString01)), $(vCategorisation)) as QVD_Interaction
+    RESIDENT LoadingFromQVD_Temp;
+
     DROP TABLE LoadingFromQVD_Temp;
 
     ScriptLogContent_Temp01:
@@ -545,10 +523,8 @@ IF '$(vRunLogAnalysis)' = 'Yes' THEN
 
     DROP FIELD JOIN_KEY;
 
-
     ScriptLogContent_Temp02: NOCONCATENATE LOAD * RESIDENT ScriptLogContent_Temp01 ORDER BY LogFile ASC, TimeStamp ASC, LineIndex ASC;
     DROP TABLE ScriptLogContent_Temp01;
-
 
     LEFT JOIN(ScriptLogContent_Temp02)
     LOAD
@@ -558,19 +534,15 @@ IF '$(vRunLogAnalysis)' = 'Yes' THEN
         INTERVAL(NUM(TimeStamp) - PREVIOUS(NUM(TimeStamp)), 'HH:mm:ss') as ScriptPortion_RunTime
     RESIDENT ScriptLogContent_Temp02;
 
-
     ScriptLogContent: NOCONCATENATE LOAD * RESIDENT ScriptLogContent_Temp02 WHERE LineIndex <> 9999;
     DROP TABLE ScriptLogContent_Temp02;
-
 
     STORE ScriptLogContent INTO [$(vQMC_QVD_Store)/ScriptLogContent.qvd] (QVD);
     DROP TABLE ScriptLogContent;
 
-//END IF from tab  "Script Log Analysis --> PREP"
-
-//Record last run time to check on next run if there have been new script logs added
-LET vScriptLogLastRun = NUM(NOW());
-
+    //END IF from tab  "Script Log Analysis --> PREP"
+    //Record last run time to check on next run if there have been new script logs added
+    LET vScriptLogLastRun = NUM(NOW());
 END IF;
 
 TRACE ************* START of Dependency *************;
