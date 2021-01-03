@@ -3,7 +3,7 @@
 }
 
 /* .qv-object * {
-    font-family: 'SamsungOne-400', 'SamsungOne-700', 'SamsungSharpSansRegular-Regular' !IMPORTANT;
+    font-family: 'FontOne-400', 'FontOne-700', 'FontSharpSansRegular-Regular' !IMPORTANT;
 } */
 
 /* KPI Font Awesome */
@@ -12,7 +12,7 @@
 }
 
 .qv-object :not([font-family]):not(.icon):not(.lui-icon):not(.fa):not(.far):not(.fas):not(.vzb-lui-icon):not(.cl-custom-report-icon) {
-  font-family: SamsungOne-400, SamsungOne-700, SamsungSharpSansRegular-Regular !IMPORTANT;
+  font-family: FontOne-400, FontOne-700, FontSharpSansRegular-Regular !IMPORTANT;
 }
 
 .qv-object .lui-caret,
@@ -52,22 +52,22 @@
 }
 
 @font-face {
-  font-family: "SamsungOne-400";
-  src: url(SamsungOne-400.woff) format("woff");
+  font-family: "FontOne-400";
+  src: url(FontOne-400.woff) format("woff");
 }
 
 @font-face {
-  font-family: "SamsungOne-700";
-  src: url(SamsungOne-700.woff) format("woff");
+  font-family: "FontOne-700";
+  src: url(FontOne-700.woff) format("woff");
 }
 
 @font-face {
-  font-family: "Samsung Sans Regular";
-  src: url(SamsungSharpSansRegular-Regular.ttf) format("truetype");
+  font-family: "Font Sans Regular";
+  src: url(FontSharpSansRegular-Regular.ttf) format("truetype");
 }
 
 /*
 .qvt-selections, .qvt-sheet-container *:not(.icon):not(.lui-icon):not(.fa):not(.pp-component) {
-	font-family: 'SamsungOne-400', 'Helvetica', 'Arial', sans-serif !important;
+	font-family: 'FontOne-400', 'Helvetica', 'Arial', sans-serif !important;
 }
 */
