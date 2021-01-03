@@ -34,7 +34,7 @@ LOAD * INLINE [
 RGB_Base:
 LOAD * INLINE [
     ColourName, R, G, B
-    SamsungBlue, 20, 40, 160
+    CorpPaletBlue, 20, 40, 160
     SkyBlue, 0, 119, 200
     Clover, 151, 214, 82
     SeaBlue, 0, 179, 227
@@ -44,7 +44,6 @@ LOAD * INLINE [
 ];
 
 
-//Secondary Palette from "https://brandcolors.net/b/samsung"
 RGB_Base:
 Concatenate(RGB_Base)
 LOAD * INLINE [
