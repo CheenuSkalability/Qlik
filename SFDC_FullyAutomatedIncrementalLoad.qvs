@@ -1,8 +1,8 @@
 TRACE ******  Loading the sub-routine for the SFDC Fully Automated Incremental Loading.  ******;
 
 sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parPrimaryKey,parDateTimeField,parDBTableFieldsChecker_YES)
-
-    /*  <----------- 1 - Comparing current Salesforce table structure to earliest YYYYMM QVD  ----------->*/ 
+    /*  <------ 1 - Comparing current Salesforce table structure to earliest YYYYMM QVD  ------>*/ 
+    TRACE <------ 1 - Comparing current Salesforce table structure to earliest YYYYMM QVD  ------>;
     /*
     First we need to cross-compare the structure of the first YYYYMM QVD to the fields in the SalesForce table
     to see if the structure has changed (i.e. if new fields have been added).
@@ -12,6 +12,7 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
     LET vStartYearMonth = DATE(MONTHSTART('$(vStartDate)'), 'YYYYMM');
 
     //Get the start-date YYYYMM QVD to check for the table structure/fields in the QVD, if it exists.
+    TRACE Get the start-date YYYYMM QVD to check for the table structure/fields in the QVD, if it exists;
     IF '$(parDBTableFieldsChecker_YES)' =  'YES' THEN
             IF ALT(QvdCreateTime('$(parQVDTargetFolder)/SFDC/$(parSFDC_TableName)/SFDC_$(parSFDC_TableName)_$(vStartYearMonth).qvd'), 0) > 0 THEN
                 QVD_Fieldnames:
@@ -22,6 +23,7 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
             END IF;
 
             //If there is no start-date then get the min-YYYYMM QVD
+            TRACE If there is no start-date then get the min-YYYYMM QVD;
             IF ALT(NoOfRows(QVD_Fieldnames), 0) = 0 THEN
                 //Fetch full list of existing QVDs
                 FOR EACH file IN FileList('$(parQVDTargetFolder)/SFDC/$(parSFDC_TableName)/SFDC_$(parSFDC_TableName)_*.qvd')
@@ -29,6 +31,7 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
                 NEXT file;
 
                 //Get first QVD in list --> which theoretically is oldest YYYYMM QVD in the list -->> "ORDER BY FileList ASC" below.
+                TRACE Get first QVD in list --> which theoretically is oldest YYYYMM QVD in the list -->> "ORDER BY FileList ASC" below.;
                 QVDFileNamesList:
                 NOCONCATENATE FIRST 1
                 LOAD 
@@ -40,7 +43,8 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
                 LET vQVDFileNamesList = PEEK('QVDFileNamesList', 0, 'QVDFileNamesList');
                 DROP TABLE QVDFileNamesList;
 
-                //Get the list of fields in the oldest QVD
+                //Get the list of fields in the oldest QVD.
+                TRACE Get the list of fields in the oldest QVD.;
                 QVD_Fieldnames:
                 LOAD
                     FieldName as QVD_Fieldnames
@@ -49,15 +53,18 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
             END IF;
 
             //Get a sample of the table to gather the field names in the Salesforce table as they are right now
+            TRACE Getting sample of table to gather field names in Salesforce table as they are right now.;
             SFDC_SampleTable: SELECT * FROM $(parSFDC_TableName) LIMIT 1;
 
             //Put all the QVD fieldnames in a table/column
+            TRACE Put all the QVD fieldnames in a table/column.;
             FOR SFDC_Fieldnames = 1 TO NoOfFields('SFDC_SampleTable')
                 LET vSFDC_Fieldnames = FieldName($(SFDC_Fieldnames),'SFDC_SampleTable');
                 SFDC_Fieldnames: LOAD '$(vSFDC_Fieldnames)' as SFDC_Fieldnames AUTOGENERATE(1);
             NEXT SFDC_Fieldnames;
 
             //Cross-compare SFDC and see if there are differences
+            TRACE Cross-compare SFDC and see if there are differences.;
             Field_Comparison:
             LOAD * WHERE Check_Fields = 0;
             LOAD EXISTS(QVD_Fieldnames, SFDC_Fieldnames) as Check_Fields RESIDENT SFDC_Fieldnames;
@@ -65,7 +72,6 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
             DROP TABLES QVD_Fieldnames, SFDC_SampleTable, SFDC_Fieldnames;
     END IF;
     
-
     //If there is data in "Field_Comparison" table AND the "parDBTableFieldsChecker_YES" is set to "YES"
     IF ALT(NoOfRows('Field_Comparison'), 0) > 0 AND '$(parDBTableFieldsChecker_YES)' =  'YES' THEN
         TRACE **** <== RUNNING A FULL TABLE LOAD FROM SOURCE!!! ==> ****;
@@ -81,7 +87,9 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
 
     // ACTUAL DATA LOADING BELOW
     /*  <----------- 2 - Support tables and information  ----------->*/
-    // 2a. Check the delta QVD files and folders to get the DateTime Field for that SFDC table
+    TRACE <----------- 2 - Support tables and information  ----------->;
+    // 2a. Check the delta QVD files and folders to get the DateTime Field for that SFDC table.
+    TRACE 2a. Check the delta QVD files and folders to get the DateTime Field for that SFDC table.;
     IF ALT(QvdCreateTime('$(parQVDTargetFolder)/SFDC/_Delta/SFDC_$(parSFDC_TableName)_Max_$(parDateTimeField).qvd'), 0) > 0 AND '$(vTableRebuild)' <> 'Yes' THEN
         Max_$(parDateTimeField):
         LOAD
@@ -89,10 +97,12 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
         FROM [$(parQVDTargetFolder)/SFDC/_Delta/SFDC_$(parSFDC_TableName)_Max_$(parDateTimeField).qvd] (QVD);
         
         // 2b. Establish difference between today and last loading date [PLUS 2 days, for safeguard --->  commented out below].
+        TRACE 2b. Establish difference between today and last loading date.;
         LET vLAST_N_DAYS = NUM(TODAY()) - PEEK('Max_$(parDateTimeField)', 0, 'Max_$(parDateTimeField)') /*+ 2*/;
         DROP TABLE Max_$(parDateTimeField);
     ELSE
         // 2c. This is the DEFAULT value on the first run and will fetch the last 2 years of data from each mentioned table in SFDC.
+        TRACE 2c. This is the DEFAULT value on the first run and will fetch the last 2 years of data from each mentioned table in SFDC.;
         LET vLAST_N_DAYS = NUM(TODAY() - MAKEDATE(2018,09,01));
         //LET vLAST_N_DAYS = NUM(TODAY() - MONTHSTART(ADDYEARS(TODAY(), -2)));
         TRACE ***** LOADING ALL DATA *****;
@@ -101,7 +111,9 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
     TRACE ***** LOADING DATA FOR PREVIOUS $(vLAST_N_DAYS) DAYS *****;
 
     /*  <----------- 3 - SOQL loading of data from Salesforce  ----------->*/
+    TRACE <----------- 3 - SOQL loading of data from Salesforce  ----------->;
     // 3a. SOQL statement for all new records
+    TRACE 3a. SOQL statement for all new records;
     TRACE *** SOQL Select Statement --> "$(parSFDC_TableName)" tab ***;
     TRACE SOQL Query being passed thorugh to the SFDC "SELECT * FROM $(parSFDC_TableName) WHERE $(parDateTimeField) >= LAST_N_DAYS:$(vLAST_N_DAYS)";
 
@@ -110,26 +122,31 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
     SELECT * FROM $(parSFDC_TableName) WHERE $(parDateTimeField) >= LAST_N_DAYS:$(vLAST_N_DAYS) ORDER BY $(parDateTimeField) DESC;
 
     // 3c. Identify the MAX DateTime Field in order to store into a Delta QVD for next run.
+    TRACE 3c. Identify the MAX DateTime Field in order to store into a Delta QVD for next run.;
     Max_$(parDateTimeField):
     LOAD
         DATE(MAX($(parDateTimeField)), 'YYYY-MM-DD HH:mm:ss') as Max_$(parDateTimeField)
     RESIDENT $(parSFDC_TableName);
 
-
     /*  <---------------------- 4 - Store to QVDs  ---------------------->*/
+    TRACE <---------------------- 4 - Store to QVDs  ---------------------->;
     // 4a. If the SFDC delta (change-data-capture) load table exists in the Qlik script and there is one record or more
+    TRACE 4a. If the SFDC delta (change-data-capture) load table exists in the Qlik script and there is one record or more.;
     IF NOT(ISNULL(TableNumber('$(parSFDC_TableName)'))) AND ALT(NoOfRows('$(parSFDC_TableName)'), 0) > 0 THEN
 
-        // 4b. Get the distinct values in the "DateTime Field_YYYYMM" to loop around
+        // 4b. Get the distinct values in the "DateTime Field_YYYYMM" to loop around.
+        TRACE 4b. Get the distinct values in the "DateTime Field_YYYYMM" to loop around.;
         FOR Each FieldValue in FieldValueList('$(parDateTimeField)_YYYYMM')
             DistinctFieldValues: LOAD '$(FieldValue)' as DistinctFieldValues AUTOGENERATE(1);
         NEXT FieldValue;
 
         // 4c. Loop through the distinct YYYYMM field values in order to generate the YYYYMM QVDs
+        TRACE 4c. Loop through the distinct YYYYMM field values in order to generate the YYYYMM QVDs.;
         FOR i=1 TO NoOfRows('DistinctFieldValues')
             LET vDistinctFieldValues = PEEK('DistinctFieldValues', $(i)-1,'DistinctFieldValues');
 
             // 4c-1. Check if the current YYYYMM QVD already exists... (or else if not re-building all QVDs)
+            TRACE 4c-1. Check if the current YYYYMM QVD already exists... (or else if not re-building all QVDs);
             IF ALT(QvdCreateTime('$(parQVDTargetFolder)/SFDC/$(parSFDC_TableName)/SFDC_$(parSFDC_TableName)_$(vDistinctFieldValues).qvd'),0) > 0 AND  '$(vTableRebuild)' <> 'Yes' THEN
                 //... if the YYYYMM exists, load it distinct on the Primary Key ...
                 ExistingData: NOCONCATENATE LOAD * FROM [$(parQVDTargetFolder)/SFDC/$(parSFDC_TableName)/SFDC_$(parSFDC_TableName)_$(vDistinctFieldValues).qvd] (QVD) WHERE NOT(EXISTS([$(parPrimaryKey)]));
@@ -154,11 +171,14 @@ sub SFDC_FullyAutomatedIncrementalLoad(parQVDTargetFolder,parSFDC_TableName,parP
         NEXT i;
 
         // 4d. Drop the support table containing the distinct YYYYMM field values in the currently loaded SFDC extract.
+        TRACE 4d. Drop the support table containing the distinct YYYYMM field values in the currently loaded SFDC extract.;
         DROP TABLE DistinctFieldValues;
         // 4e. Drop the delta loaded SFDC table from the script.
+        TRACE 4e. Drop the delta loaded SFDC table from the script.;
         DROP TABLE $(parSFDC_TableName);
 
         // 4f. Once latest data QVD is written, then write Max_DateTime Field to file
+        TRACE  4f. Once latest data QVD is written, then write Max_DateTime Field to file.;
         STORE Max_$(parDateTimeField) INTO [$(parQVDTargetFolder)/SFDC/_Delta/SFDC_$(parSFDC_TableName)_Max_$(parDateTimeField).qvd](qvd);
         DROP TABLE Max_$(parDateTimeField);
     END IF;
