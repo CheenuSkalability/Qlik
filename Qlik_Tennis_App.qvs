@@ -1,0 +1,2118 @@
+﻿///$tab 1. Main
+SET ThousandSep=','; 
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='£#,##0.00;-£#,##0.00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD/MM/YYYY';
+SET TimestampFormat='DD/MM/YYYY hh:mm:ss[.fff]';
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+
+TRACE ********************* 1. Running Main tab *********************;
+//Set RootFolder to blank if you want to (don't forget to include the "last back-slash" in the path if using an explicit path:
+//SET vRootFolder = 'C:\Users\cheen\Desktop\ATP\v3.1.1\';
+SET vRootFolder = '';
+
+SET HidePrefix = '%';
+
+SET vBoS = 1;
+
+//Set Front-end default values for variables:
+SET vQualifierDraw = 0;
+SET vTourInfo = 0;
+
+LET vTourn_1000Gold = RGB(254, 208, 77);
+LET vTourn_500Silver = RGB(169, 177, 182);
+LET vTourn_250White = White();
+
+LET vDavisCup = RGB(0, 136, 102);
+LET vDavisCup2 = RGB(1, 104, 78);
+LET vFEDCup = RGB(191, 36, 127);
+
+LET vTableHighlight = RGB(255, 128, 0);
+
+SET vDavisCupInfo = 0;
+
+SET vGuidedAnalytics = 1;
+
+///$tab 2. Mapping Tables
+TRACE ********************* 2. Mapping Tables tab *********************;
+//Mapping tables
+//Field to rename DB/CSV field names into final field names used in front-end.
+
+FieldNames_Map:
+MAPPING LOAD * INLINE [
+    Shortcode, Semantic Fieldname
+    tourney_id, Tournament ID
+    tournament_name, Tournament Name
+    tourney_name, Tournament Name
+    surface, Surface
+    draw_size, Draw Size
+    tourney_level, Tournament Level
+    tourney_date, Tournament Date
+    match_num, Match Number
+    winner_id, Winner ID
+    winner_seed, Winner Seed
+    winner_entry, Winner Entry
+    winner_name, Winner Name
+    winner_hand, Winner Hand
+    winner_ht, Winner Height
+    winner_ioc, Winner IOC
+    winner_age, Winner Age
+    winner_rank, Winner Rank
+    winner_rank_points, Winner Rank (Points)
+    loser_id, Loser ID
+    loser_seed, Loser Seed
+    loser_entry, Loser Entry
+    loser_name, Loser Name
+    loser_hand, Loser Hand
+    loser_ht, Loser Height
+    loser_ioc, Loser IOC
+    loser_age, Loser Age
+    loser_rank, Loser Rank
+    loser_rank_points, Loser Rank (Points)
+    score, Score
+    best_of, Best of (Sets)
+    round, Round
+    minutes, Minutes
+    w_ace, Winner Aces
+    w_df, Winner Double Faults
+    w_svpt, Winner Service Points
+    w_1stIn, Winner 1st Serves In
+    w_1stWon, Winner 1st Serves Points Won
+    w_2ndWon, Winner 2nd Serves Points Won
+    w_SvGms, Winner Service Games
+    w_bpSaved, Winner Breaks Points Saved
+    w_bpFaced, Winner Breaks Points Faced
+    l_ace, Loser Aces
+    l_df, Loser Double Faults
+    l_svpt, Loser Service Points
+    l_1stIn, Loser 1st Serves In
+    l_1stWon, Loser 1st Serves Points Won
+    l_2ndWon, Loser 2nd Serves Points Won
+    l_SvGms, Loser Service Games
+    l_bpSaved, Loser Breaks Points Saved
+    l_bpFaced, Loser Breaks Points Faced
+];
+
+//Map round numbers which are then used as a numerical 'flag'/reference
+Round_NUM_Map:
+MAPPING LOAD * INLINE [
+    Round, Round_NUM
+    Finals, 1
+    Semi-Finals, 2
+    Quarter-Finals, 3
+    R16, 4
+    R32, 5
+    R64, 6
+    R128, 7
+];
+
+GSTournamentName:
+MAPPING LOAD * INLINE [
+	LongName, shortversion
+	Roland Garros, frenchopen
+	Wimbledon, wimbledon
+	US Open, usopen
+	Australian Open, ausopen
+];
+///$tab 3a. Start of RAW data load
+TRACE ********************* 3a. Start of RAW data load tab *********************;
+
+IF '$(vETL_Layer)' = 'Refresh RAW Data' THEN
+
+LET vReloadFromCSV_Start = NUM(Now());
+
+TennisData_QVDPrefixes:
+LOAD * INLINE [
+       TennisData_QVDPrefixes, YearOfDataStart, Tour, Circuit
+       atp_matches, 1968, Men, ATP Tour
+       atp_matches_futures, 1991, Men, Futures
+       atp_matches_qual_chall,1991, Men, ATP Qualifying Challenger
+       wta_matches, 1968, Women, WTA Tour
+       wta_matches_qual_itf, 1969, Women, WTA Qualifying ITF
+];
+
+//Look at comment below regarding to use "ErrorMode".
+SET ErrorMode = 0;
+
+//Loop through all the RAW CSV files on Jeff Sackman's website as is given in "TennisData_QVDPrefixes" table above:
+FOR i=1 to NoOfRows('TennisData_QVDPrefixes')
+
+		LET vTennisData_QVDPrefixes = PEEK('TennisData_QVDPrefixes', $(i)-1, 'TennisData_QVDPrefixes');
+		LET vSource = Subfield('$(vTennisData_QVDPrefixes)', '_', 1);
+		LET vTour = PEEK('Tour', $(i)-1, 'TennisData_QVDPrefixes');
+		LET vCircuit = PEEK('Circuit', $(i)-1, 'TennisData_QVDPrefixes');
+		
+		/*
+		Find the QVD copies of CSVs:
+		(i)	 If there are no copies it will create a full set for each year starting from the set 'start year' in column "YearOfDataStart" in 'TennisData_QVDPrefixes' table above;
+		(ii) Otherwise, it will only regenerate the last Year's worth of data (as found in QVD's suffixed filename).
+		N.B. Since it is not known when RAW data is updated on the website, Set ErrorMode are used at top and bottom of the script.
+		*/
+		FOR EACH file IN filelist('$(vRootFolder)DataCopies\$(vTennisData_QVDPrefixes)*.qvd')
+			FilesFound:
+			LOAD LEFT(RIGHT('$(file)', 8), 4) AS YearMonth
+			AUTOGENERATE(1);	
+		NEXT file;
+			
+		LET vFilesFound = TableNumber('FilesFound');
+			
+			
+		IF '$(vFilesFound)' = '' THEN
+			LET varMinYear = PEEK('YearOfDataStart', $(i)-1, 'TennisData_QVDPrefixes');
+			LET varMaxYear = YEAR(TODAY());
+		
+			YearsOfData:
+			LOAD
+			($(varMinYear) + RecNo() - 1) AS YearsOfData
+			AUTOGENERATE ($(varMaxYear) - $(varMinYear)+1);
+		ELSE
+			YearsOfData_Temp:
+			LOAD
+				MAXSTRING(YearMonth) AS YearsOfData
+			RESIDENT FilesFound;
+			
+			//If new Year of Data
+			Concatenate(YearsOfData_Temp)
+			LOAD Year(TODAY()) as YearsOfData
+			AUTOGENERATE(1);
+			
+			YearsOfData: NoConcatenate LOAD DISTINCT YearsOfData RESIDENT YearsOfData_Temp;
+			DROP TABLE YearsOfData_Temp;
+				
+		END IF;
+		
+		
+		FOR z=1 to NoOfRows('YearsOfData')
+		
+			LET vYearsOfData = PEEK('YearsOfData', $(z)-1, 'YearsOfData');
+			
+			CurrentData:
+			LOAD
+				 *,
+				 '$(vTour)' as Tour,
+				 '$(vCircuit)' as Circuit,
+				 '$(vTennisData_QVDPrefixes)' & '_' & '$(vYearsOfData)' as FileBaseName,
+			     IF(LOWER(tourney_name) = 'us open', 'US Open', tourney_name) as tournament_name
+			FROM [https://raw.githubusercontent.com/JeffSackmann/tennis_$(vSource)/master/$(vTennisData_QVDPrefixes)_$(vYearsOfData).csv]
+			(txt, codepage is 1252, embedded labels, delimiter is ',', msq);
+			
+			STORE CurrentData INTO $(vRootFolder)DataCopies\$(vTennisData_QVDPrefixes)_$(vYearsOfData).qvd (QVD);
+			DROP TABLE CurrentData;
+			
+		
+		NEXT z;
+		
+		IF '$(vFilesFound)' = '' THEN
+			DROP TABLE YearsOfData;
+		END IF;
+
+NEXT i;
+
+//Look at comment above regarding to use "ErrorMode".
+SET ErrorMode = 1;
+///$tab 3b. Create Core Final QVDs
+TRACE ********************* 3b. Create Core Final QVDs tab *********************;
+//Load script to create copies from DB/CSV (from "https://github.com/JeffSackmann/tennis_atp" raw data location):
+
+TennisData:
+LOAD * INLINE [
+	tourney_id
+];
+
+Concatenate(TennisData)
+LOAD * FROM [$(vRootFolder)DataCopies\*.qvd] (QVD);
+
+RENAME FIELDS USING FieldNames_Map;
+
+TRACE ******************** STORING MAIN DATA QVD!!! ********************;
+
+ATP:
+NoConcatenate	
+LOAD * RESIDENT TennisData WHERE Tour = 'Men' AND NOT(ISNULL([Tournament ID]));
+
+STORE ATP INTO $(vRootFolder)QVD\ATP_Data.qvd (QVD);
+
+ATP_MaxMatchNumber_Map:
+LOAD
+	 Circuit & '_' & [Tournament ID] as FK_Circuit_TournID,
+	MAX([Match Number]) as LastMatchNumber
+RESIDENT ATP
+GROUP BY Circuit & '_' & [Tournament ID];
+
+DROP TABLE ATP;
+
+STORE ATP_MaxMatchNumber_Map INTO $(vRootFolder)QVD\ATP_MaxMatchNumber_Map.qvd (QVD);
+DROP TABLE ATP_MaxMatchNumber_Map;
+
+WTA:
+NoConcatenate
+LOAD * RESIDENT TennisData WHERE Tour = 'Women' AND NOT(ISNULL([Tournament ID]));
+
+STORE WTA INTO $(vRootFolder)QVD\WTA_Data.qvd (QVD);
+
+WTA_MaxMatchNumber_Map:
+LOAD
+	 Circuit & '_' & [Tournament ID] as FK_Circuit_TournID,	
+	MAX([Match Number]) as LastMatchNumber
+RESIDENT WTA
+GROUP BY Circuit & '_' & [Tournament ID];
+
+DROP TABLE WTA;
+
+STORE WTA_MaxMatchNumber_Map INTO $(vRootFolder)QVD\WTA_MaxMatchNumber_Map.qvd (QVD);
+DROP TABLE WTA_MaxMatchNumber_Map;
+
+DROP TABLE TennisData;
+///$tab 3c. Rankings
+TRACE ********************* 3c. Rankings tab *********************;
+//Load script to create copies from DB/CSV (from "https://github.com/JeffSackmann/tennis_atp" raw data location) for additional Ranking data files (not used in front-end currently):
+
+//Look at comment below regarding to use "ErrorMode".
+SET ErrorMode = 0;
+
+//Check existing QVDs and only regenerate the last one:
+FOR EACH file IN filelist('$(vRootFolder)DataCopies\atp_rankings_*.qvd')
+	FilesFound_ATPRankings_Temp:
+	LOAD Subfield(SubField('$(file)', '\', SubStringCount('$(file)', '\')+1), '.qvd') AS atp_rankings_QVDs_Temp
+	AUTOGENERATE(1);	
+NEXT file;
+
+IF ALT(NoOfRows('FilesFound_ATPRankings_Temp'), 0) > 0 THEN
+	FilesFound_ATPRankings: LOAD atp_rankings_QVDs_Temp as atp_rankings_QVDs RESIDENT FilesFound_ATPRankings_Temp WHERE LEN(atp_rankings_QVDs_Temp) > 0;
+	DROP TABLE FilesFound_ATPRankings_Temp;
+END IF;
+
+LET varMinYear = 1970;
+LET varMaxYear = YEAR(TODAY());
+
+atp_rankings_CSV:
+LOAD * INLINE [
+	atp_rankings_CSV
+	atp_rankings_current.csv
+];
+
+atp_rankings_CSV:
+CONCATENATE(atp_rankings_CSV)
+LOAD 
+	'atp_rankings_' & RIGHT(YearsOfData, 2) & 's.csv' as atp_rankings_CSV
+WHERE RIGHT(YearsOfData, 1) = 0;
+LOAD
+	($(varMinYear) + RecNo() - 1) AS YearsOfData
+AUTOGENERATE ($(varMaxYear) - $(varMinYear)+1);
+
+
+LET vFilesFound_ATPRankings = TableNumber('FilesFound_ATPRankings');
+	
+IF '$(vFilesFound_ATPRankings)' <> '' THEN
+
+	AnyNewFile:
+	LOAD
+		atp_rankings_QVDs as atp_rankings_CSV_New
+	RESIDENT FilesFound_ATPRankings
+	WHERE NOT(EXISTS(atp_rankings_CSV, atp_rankings_QVDs));
+
+	INNER JOIN(atp_rankings_CSV)
+	LOAD MAXSTRING(atp_rankings_QVDs) as atp_rankings_CSV RESIDENT FilesFound_ATPRankings;
+	DROP TABLE FilesFound_ATPRankings;
+	
+	CONCATENATE (atp_rankings_CSV) LOAD atp_rankings_CSV_New as atp_rankings_CSV RESIDENT AnyNewFile;
+	DROP TABLE AnyNewFile;
+
+END IF;
+
+FOR t=1 to NoOfRows('atp_rankings_CSV')
+
+LET vatp_rankings_CSV = PEEK('atp_rankings_CSV', $(t)-1, 'atp_rankings_CSV');
+
+PlayerRankings:
+LOAD
+	*,
+	NUM(RankingDate) as RankingDate_NUM
+;
+LOAD 
+	 MAKEDATE(LEFT(@1, 4), RIGHT(LEFT(@1, 6), 2), RIGHT(@1, 2)) as RankingDate, 
+     @2 as ATP_Ranking, 
+     @3 as [Player ID], 
+     @4 as [ATP Player Points]
+FROM [https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master/$(vatp_rankings_CSV)]
+(txt, codepage is 1252, no labels, delimiter is ',', msq);
+
+STORE PlayerRankings INTO [$(vRootFolder)DataCopies\Rankings\$(vatp_rankings_CSV).qvd] (QVD);
+DROP TABLE PlayerRankings;
+
+NEXT t;
+
+DROP TABLE atp_rankings_CSV;
+
+
+TRACE *********************ADDITIONAL Rankings QVD FILES*********************;
+//Load script to create copies from DB/CSV (from "https://github.com/JeffSackmann/tennis_wta" raw data location) for additional Ranking data files (not used in front-end currently):
+
+//Look at comment below regarding to use "ErrorMode".
+SET ErrorMode = 0;
+
+//Check existing QVDs and only regenerate the last one:
+FOR EACH file IN filelist('$(vRootFolder)DataCopies\wta_rankings_*.qvd')
+	FilesFound_WTARankings_Temp:
+	LOAD Subfield(SubField('$(file)', '\', SubStringCount('$(file)', '\')+1), '.qvd') AS wta_rankings_QVDs_Temp
+	AUTOGENERATE(1);	
+NEXT file;
+
+IF ALT(NoOfRows('FilesFound_WTARankings_Temp'), 0) > 0 THEN
+	FilesFound_WTARankings: LOAD wta_rankings_QVDs_Temp as wta_rankings_QVDs RESIDENT FilesFound_WTARankings_Temp WHERE LEN(wta_rankings_QVDs_Temp) > 0;
+	DROP TABLE FilesFound_WTARankings_Temp;
+END IF;
+
+LET varMinYear = 1970;
+LET varMaxYear = YEAR(TODAY());
+
+wta_rankings_CSV:
+LOAD * INLINE [
+	wta_rankings_CSV
+	wta_rankings_current.csv
+];
+
+wta_rankings_CSV:
+CONCATENATE(wta_rankings_CSV)
+LOAD 
+	'wta_rankings_' & RIGHT(YearsOfData, 2) & 's.csv' as wta_rankings_CSV
+WHERE RIGHT(YearsOfData, 1) = 0;
+LOAD
+	($(varMinYear) + RecNo() - 1) AS YearsOfData
+AUTOGENERATE ($(varMaxYear) - $(varMinYear)+1);
+
+LET vFilesFound_WTARankings = TableNumber('FilesFound_WTARankings');
+	
+IF '$(vFilesFound_WTARankings)' <> '' THEN
+
+	AnyNewFile:
+	LOAD
+		wta_rankings_QVDs as wta_rankings_CSV_New
+	RESIDENT FilesFound_WTARankings
+	WHERE NOT(EXISTS(wta_rankings_CSV, wta_rankings_QVDs));
+
+	INNER JOIN(wta_rankings_CSV)
+	LOAD MAXSTRING(wta_rankings_QVDs) as wta_rankings_CSV RESIDENT FilesFound_WTARankings;
+	DROP TABLE FilesFound_WTARankings;
+	
+	CONCATENATE (wta_rankings_CSV) LOAD wta_rankings_CSV_New as wta_rankings_CSV RESIDENT AnyNewFile;
+	DROP TABLE AnyNewFile;
+
+END IF;
+
+FOR t=1 to NoOfRows('wta_rankings_CSV')
+
+LET vWTA_rankings_CSV = PEEK('wta_rankings_CSV', $(t)-1, 'wta_rankings_CSV');
+
+PlayerRankings:
+LOAD
+	*,
+	NUM(RankingDate) as RankingDate_NUM
+;
+LOAD 
+	 MAKEDATE(LEFT(@1, 4), RIGHT(LEFT(@1, 6), 2), RIGHT(@1, 2)) as RankingDate, 
+     @2 as WTA_Ranking, 
+     @3 as [Player ID], 
+     @4 as [WTA Player Points]
+FROM
+[https://raw.githubusercontent.com/JeffSackmann/tennis_wta/master/$(vWTA_rankings_CSV)]
+(txt, codepage is 1252, no labels, delimiter is ',', msq);
+
+STORE PlayerRankings INTO [$(vRootFolder)DataCopies\Rankings\$(vWTA_rankings_CSV).qvd] (QVD);
+DROP TABLE PlayerRankings;
+
+NEXT t;
+
+DROP TABLE wta_rankings_CSV;
+
+//Look at comment below regarding to use "ErrorMode".
+SET ErrorMode = 1;
+///$tab 3d. Player Last Rank - ATP and WTA
+TRACE ********************* 3d. Player Last Rank - ATP and WTA *********************; 
+
+TourType:
+LOAD * INLINE [
+	TourType
+	ATP
+	WTA
+];
+
+FOR s=1 TO NoOfRows('TourType')
+
+LET vTourType = PEEK('TourType', $(s)-1, 'TourType');
+LET vtourtype = LOWER('$(vTourType)');
+
+		$(vTourType)_PlayerProgression:
+		LOAD
+			NUM(RankingDate) as RankingDate_NUM,	
+			$(vTourType)_Ranking, 
+			[Player ID]
+		FROM [$(vRootFolder)DataCopies\Rankings\$(vtourtype)_rankings_*.qvd] (QVD);
+				
+		$(vTourType)_PlayersLastRank_Temp:
+		LOAD
+			*,
+			[Player ID] & '_' & LastRankDate_NUM as JoinKey;
+		LOAD
+			[Player ID],
+			MAX(RankingDate_NUM) as LastRankDate_NUM
+		RESIDENT $(vTourType)_PlayerProgression
+		WHERE LEN([Player ID]) > 0
+		GROUP BY [Player ID];
+
+		LEFT JOIN($(vTourType)_PlayersLastRank_Temp)
+		LOAD 
+			[Player ID] & '_' & NUM(RankingDate_NUM) as JoinKey,
+			$(vTourType)_Ranking
+		RESIDENT $(vTourType)_PlayerProgression;
+		
+		DROP FIELD JoinKey;
+		
+		DROP TABLE $(vTourType)_PlayerProgression;
+		
+		$(vTourType)_PlayersLastRank:
+		LOAD
+			[Player ID],
+			LastRankDate_NUM,
+			$(vTourType)_Ranking,
+			LastRankDate_NUM & '_' & $(vTourType)_Ranking as $(vTourType)_Last_Date_Rank_Map
+		RESIDENT $(vTourType)_PlayersLastRank_Temp;
+				
+		DROP TABLE $(vTourType)_PlayersLastRank_Temp;
+		
+		STORE $(vTourType)_PlayersLastRank INTO $(vRootFolder)QVD\$(vTourType)_PlayersLastRank.qvd (QVD);
+		DROP TABLE $(vTourType)_PlayersLastRank;
+
+NEXT s;
+
+DROP TABLE TourType;
+///$tab 3e. End of RAW data load
+TRACE ********************* 3e. End of RAW data load tab *********************;
+
+LET vReloadFromCSV =  NUM(Now()) - $(vReloadFromCSV_Start);
+LET vReloadDateTimeCSV = Now();
+
+LET vReloadFromCSV = NUM(Now()) - $(vReloadFromCSV_Start);
+LET vReloadDateTimeCSV = Now();
+
+//END IF of "RAW" data load
+END IF;
+
+
+TRACE End of RAW data reload;
+///$tab 4a. Final QVD Build - ATP
+TRACE ********************* 4a. Final QVD Build - ATP tab *********************;
+
+IF '$(vETL_Layer)' = 'Final DataModel' THEN
+
+LET vReloadFromQVD_Start = NUM(Now());
+
+OneYearAgo:
+LOAD
+	NUM(AddYears(MAX(Date(Date#([Tournament Date], 'YYYYMMDD'))), -1)) as OneYearAgo
+FROM [$(vRootFolder)QVD\ATP_Data.qvd] (QVD);
+
+LET vOneYearAgo = PEEK('OneYearAgo', 0, 'OneYearAgo');
+DROP TABLE OneYearAgo;
+
+IF ALT(FileTime('$(vRootFolder)QVD\ATP_PlayersLastRank.qvd'), 0) > 0 THEN 
+	ATP_Last_Date_Rank_Map:
+	MAPPING LOAD 
+		 [Player ID] as [ATP Player ID], 
+	     ATP_Last_Date_Rank_Map
+	FROM $(vRootFolder)QVD\ATP_PlayersLastRank.qvd (QVD);
+END IF;
+
+WildMatchString:
+LOAD
+	'*F' &RowNo() & '*' as RowNo
+AutoGenerate(75);
+
+WildMatchStrings:
+LOAD
+	CHR(39) & Concat(DISTINCT RowNo, CHR(39) & ',' & CHR(39)) & CHR(39) as WildMatchStrings
+RESIDENT WildMatchString;
+
+DROP TABLE WildMatchString;
+
+LET vWildMatchStrings = PEEK('WildMatchStrings', 0, 'WildMatchStrings');
+
+DROP TABLE WildMatchStrings;
+
+//Country Name Mapping
+Country_Mapping_Temp:
+LOAD IOC_Code, 
+     Country,
+     1 as Dummy
+FROM [$(vRootFolder)SupportData\IOC_Country_Codes.csv]
+(txt, codepage is 1252, embedded labels, delimiter is ',', msq);
+
+Concatenate(Country_Mapping_Temp)
+LOAD SubField(Obsolete_IOC_Codes, ',') as IOC_Code, 
+     Country,
+     2 as Dummy
+FROM [$(vRootFolder)SupportData\IOC_Country_Codes.csv]
+(txt, codepage is 1252, embedded labels, delimiter is ',', msq);
+
+Country_Map:
+MAPPING LOAD IOC_Code, Country RESIDENT Country_Mapping_Temp WHERE LEN(IOC_Code) > 1;
+
+DROP TABLE Country_Mapping_Temp;
+//End of country name mapping
+
+MaxMatchNumber_Map:
+MAPPING LOAD
+	 FK_Circuit_TournID,
+	 LastMatchNumber
+FROM [$(vRootFolder)QVD\ATP_MaxMatchNumber_Map.qvd] (QVD);
+
+TRACE ********************* Final QVD Build - ATP Winners *********************;
+
+//Match winners
+MatchData_Winner:
+LOAD
+	NUM([Round in Main Draw]) as Round_NUM,
+	ApplyMap('Round_NUM_Map', [Round in Main Draw]) as Round_NUM_Map,
+	*,
+	IF([Player Rank] > 0 AND [Player Rank] <= 10, Dual('Top 10', 1),
+		IF([Player Rank] > 10 AND [Player Rank] <= 20, Dual('11 - 20', 2),
+			IF([Player Rank] > 20 AND [Player Rank] <= 50, Dual('21 - 50', 3),
+				IF([Player Rank] > 50 AND [Player Rank] <= 100, Dual('51 - 100', 4),
+					IF([Player Rank] > 100 AND [Player Rank] <= 120, Dual('101 - 120', 5),
+						IF([Player Rank] > 120 AND [Player Rank] <= 150, Dual('121 - 150', 6),
+							IF([Player Rank] > 150 AND [Player Rank] <= 200, Dual('151 - 200', 7),
+								IF([Player Rank] > 200 AND [Player Rank] <= 300, Dual('201 - 300', 8),
+									IF([Player Rank] > 300 AND [Player Rank] <= 400, Dual('301 - 400', 9),
+										IF([Player Rank] > 400 AND [Player Rank] <= 500, Dual('401 - 500', 10),
+											IF([Player Rank] > 500, Dual('501 +', 11)))))))))))) as [Player Rank Buckets],
+	IF(_%MAX_MATCHES > 7, NUM(-1 * [Match_Round_Temp1]), NULL())
+			 as _%TEMP_RESULT,
+	IF(_%MAX_MATCHES > 7,
+		IF(_%MAX_MATCHES >= 8 AND _%MAX_MATCHES <= 16, '16',
+			IF(_%MAX_MATCHES >= 17 AND _%MAX_MATCHES <= 45, '32',
+				IF(_%MAX_MATCHES >= 46 AND _%MAX_MATCHES <= 79, '64',
+					IF(_%MAX_MATCHES >= 80 AND _%MAX_MATCHES <= 128, '128'))))) as _%MAX_MATCHES_GROUPING,
+	AUTONUMBERHASH128('Men', [Tournament Date FK], [Tournament ID], [Match Number]) as Match_FK,
+	AUTONUMBERHASH128([Tournament ID], [Player ID]) as WinnerJoinField,
+	AUTONUMBERHASH128(%Tour, NUM([Tournament Date]), [Player ID]) as PlayerProgression_FK,
+    IF(NUM([Tournament Date]) > $(vOneYearAgo), 1, 0) as Flag_52WeeksAgo,
+    IF([Tournament Type] = 1, // = "Grand Slam" as a number from a Dual() field
+		SubField([Tournament ID], '-', 1) & '#|#' &
+		ApplyMap('GSTournamentName', [Tournament Name]) & '#|#'	& LOWER(PURGECHAR([Winner Name], '¦`¬!"£$€%^&*()_-+={[}];:@~#,<.>?/\| '))
+		& '#|#' & LOWER(PURGECHAR(Opponent, '¦`¬!"£$€%^&*()_-+={[}];:@~#,<.>?/\| '))) as %PointByPoint
+;
+LOAD
+	 Tour as %Tour,
+	 Circuit, 
+	 FileBaseName,
+	 AUTONUMBERHASH128(Circuit, Tour, [Tournament ID]) as %TournamentFK,
+	 [Tournament ID],
+	 IF(Circuit = 'ATP Matches' AND WildMatch([Tournament Name], '* CH') <> 1 AND WildMatch([Tournament Name], '* Q') <> 1 AND LEFT([Tournament Name], 9) <> 'Davis Cup',
+	 [Match Number] - ApplyMap('MaxMatchNumber_Map', Circuit & '_' & [Tournament ID], NULL()), NULL()) as [Match_Round_Temp1],
+	 ApplyMap('MaxMatchNumber_Map', Circuit & '_' & [Tournament ID], NULL()) as _%MAX_MATCHES,
+     mid([Match Number], index([Match Number],left(PurgeChar([Match Number], '0'),1))) as [Match Number_NUM],
+     [Match Number], 
+	 [Tournament Date] as [Tournament Date FK],
+      Date(Date#([Tournament Date], 'YYYYMMDD')) as [Tournament Date],
+	 AUTONUMBERHASH128('Men', [Winner ID]) as PlayerID_FK,
+	 [Winner ID] as [Player ID],
+	 SubField(ApplyMap('ATP_Last_Date_Rank_Map', [Winner ID], NULL()), '_', 1) as LastRank_DateNUM,
+	 SubField(ApplyMap('ATP_Last_Date_Rank_Map', [Winner ID], NULL()), '_', 2) as LastRank,
+	 [Winner Seed],
+     [Winner Seed] as [Player Seed], 
+	 ApplyMap('Country_Map', IF([Winner Name] = 'Ivan Lendl', 'CZE', [Winner IOC]), 'No Country') as [Player Country],
+	 [Winner Name] as [Winner Name_ForReload],
+     [Winner IOC] as [Player IOC], 
+     [Winner Age] as [Player Age], 
+     [Winner Rank] as [Player Rank], 
+     [Winner Rank (Points)] as [Player Rank (Points)], 
+     [Winner Aces] as [Player Aces],
+     [Winner Double Faults] as [Player Double Faults], 
+     [Winner Service Points] as [Player Service Points],
+     [Winner 1st Serves In] as [Player 1st Serves In],
+     [Winner Service Points] - [Winner 1st Serves In] - [Winner Double Faults] as [Player 2nd Serves In],
+     [Winner 1st Serves Points Won] as [Player 1st Serves Points Won], 
+     [Winner 2nd Serves Points Won] as [Player 2nd Serves Points Won],
+     [Winner 1st Serves Points Won] + [Winner 2nd Serves Points Won] as [Player Service Points Won],
+     [Winner Service Points] - ([Winner 1st Serves Points Won] + [Winner 2nd Serves Points Won]) as [Player Service Points Lost], 
+     [Winner Service Games] as [Player Service Games],
+     [Winner Breaks Points Saved] as [Player Breaks Points Saved], 
+     [Winner Breaks Points Faced] as [Player Breaks Points Faced],
+	 'Winner' as [Winner/Loser Flag],
+     Score,
+     SubStringCount(Trim(Purgechar(Score, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')), ' ') + 1 as [Sets Played],
+//Counting Games Won
+	 ALT(NUM(SubField(SubField(Score, ' ', 1), '-', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(Score, ' ', 2), '-', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(Score, ' ', 3), '-', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(Score, ' ', 4), '-', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(Score, ' ', 5), '-', 1)), 0) as [Count of Games Won],
+//Counting Games Lost
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 1), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 2), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 3), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 4), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 5), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0) as [Count of Games Lost],
+//Counting Bagels Given	 
+	 SubStringCount(Text(SubField(SubField(Score, ' ', 1), '-', 2))
+	 &
+	 Text(SubField(SubField(Score, ' ', 2), '-', 2))
+	 &
+	 Text(SubField(SubField(Score, ' ', 3), '-', 2))
+	 &
+	 Text(SubField(SubField(Score, ' ', 4), '-', 2))
+	 &
+	 Text(SubField(SubField(Score, ' ', 5), '-', 2)), '0') as [Bagel Delivery],
+//Counting Bagels Received	 
+	 SubStringCount(Text(SubField(SubField(Score, ' ', 1), '-', 1))
+	 &
+	 Text(SubField(SubField(Score, ' ', 2), '-', 1))
+	 &
+	 Text(SubField(SubField(Score, ' ', 3), '-', 1))
+	 &
+	 Text(SubField(SubField(Score, ' ', 4), '-', 1))
+	 &
+	 Text(SubField(SubField(Score, ' ', 5), '-', 1)), '0') as [Bagels Received],
+//End of transformation
+     [Best of (Sets)], 
+     Round,
+     IF(Round = 'F', Dual('Finals', 1),
+		IF(Round = 'SF', Dual('Semi-Finals', 2),
+			IF(Round = 'QF', Dual('Quarter-Finals', 3),
+				IF(Round = 'R16', Dual('R16', 4),
+					IF(Round = 'R32', Dual('R32', 5),
+						IF(Round = 'R64', Dual('R64', 6),
+							IF(Round = 'R128', Dual('R128', 7)))))))) as [Round in Main Draw],      
+     IF(LEN(TRIM(Minutes)) > 0, Minutes, NULL()) as Minutes,
+     IF(ALT(Minutes, 0) > 0, 1, 0) as BoS01,
+     IF([Circuit] = 'ATP Tour' OR ISNULL([Circuit]),
+     	IF([Tournament Name] = 'Wimbledon' OR [Tournament Name] = 'Roland Garros' OR [Tournament Name] = 'US Open' /*OR [Tournament Name] = 'Us Open'*/ OR [Tournament Name] = 'Australian Open', Dual('Grand Slams', 1),
+     		IF(WildMatch([Tournament Name], '* CH') = 1, Dual('Challenger', 6),
+     			IF(WildMatch([Tournament Name], '* Q') = 1, Dual('ATP Tour - Quali', 4),
+     				IF(LEFT([Tournament Name], 9) = 'Davis Cup', Dual('Davis Cup', 8),
+     					IF(Right([Tournament Name], 7) = 'Masters', Dual('ATP Masters', 2),
+			     			IF(WildMatch([Tournament Name], '*Masters *') = 1, Dual('Masters - Quali', 5),
+					  			IF(WildMatch([Tournament Name], $(vWildMatchStrings)) <> 0 OR WildMatch([Tournament Name], '* FUTURES*') = 1, Dual('Futures', 7),
+     								Dual('ATP Tour', 3)))))))), dual([Circuit], 10)) as [Tournament Type],
+	1 as [Count of Matches],	
+	//for PointByPoint key
+	[Winner Name],
+	[Loser Name] as Opponent,
+	[Loser IOC] as Cty_Opponent,
+	[Tournament Name]
+FROM [$(vRootFolder)QVD\ATP_Data.qvd] (QVD);
+
+
+TournamentWinner:
+LEFT JOIN(MatchData_Winner)
+LOAD
+	AUTONUMBERHASH128([Tournament ID], [Player ID]) as WinnerJoinField,
+	'Yes' as TournamentWinner_Flag
+RESIDENT MatchData_Winner WHERE Round = 'F';
+
+//Final build
+MatchData:
+LOAD
+	*,
+	IF(TournamentWinner_Flag = 'Yes', 	AUTONUMBERHASH128('Men', [Tournament ID], [Player ID]), NULL()) as SpecialStats01_FK
+RESIDENT MatchData_Winner;
+
+DROP TABLE MatchData_Winner;
+
+
+Tournament_Type_Map:
+MAPPING LOAD DISTINCT
+	[Tournament ID],
+	[Tournament Type]
+RESIDENT MatchData;
+
+TRACE ********************* Final QVD Build - ATP Losers *********************;
+
+//Match Losers
+Concatenate(MatchData)
+LOAD
+	NUM([Round in Main Draw]) as Round_NUM,
+	ApplyMap('Round_NUM_Map', [Round in Main Draw]) as Round_NUM_Map,
+	*,
+	IF([Player Rank] > 0 AND [Player Rank] <= 10, Dual('Top 10', 1),
+		IF([Player Rank] > 10 AND [Player Rank] <= 20, Dual('11 - 20', 2),
+			IF([Player Rank] > 20 AND [Player Rank] <= 50, Dual('21 - 50', 3),
+				IF([Player Rank] > 50 AND [Player Rank] <= 100, Dual('51 - 100', 4),
+					IF([Player Rank] > 100 AND [Player Rank] <= 120, Dual('101 - 120', 5),
+						IF([Player Rank] > 120 AND [Player Rank] <= 150, Dual('121 - 150', 6),
+							IF([Player Rank] > 150 AND [Player Rank] <= 200, Dual('151 - 200', 7),
+								IF([Player Rank] > 200 AND [Player Rank] <= 300, Dual('201 - 300', 8),
+									IF([Player Rank] > 300 AND [Player Rank] <= 400, Dual('301 - 400', 9),
+										IF([Player Rank] > 400 AND [Player Rank] <= 500, Dual('401 - 500', 10),
+											IF([Player Rank] > 500, Dual('501 +', 11)))))))))))) as [Player Rank Buckets],
+	IF(_%MAX_MATCHES > 7, NUM(-1 * [Match_Round_Temp1]), NULL())
+			 as _%TEMP_RESULT,
+	IF(_%MAX_MATCHES > 7,
+		IF(_%MAX_MATCHES >= 8 AND _%MAX_MATCHES <= 16, '16',
+			IF(_%MAX_MATCHES >= 17 AND _%MAX_MATCHES <= 45, '32',
+				IF(_%MAX_MATCHES >= 46 AND _%MAX_MATCHES <= 79, '64',
+					IF(_%MAX_MATCHES >= 80 AND _%MAX_MATCHES <= 128, '128'))))) as _%MAX_MATCHES_GROUPING,
+	AUTONUMBERHASH128('Men', [Tournament Date FK], [Tournament ID], [Match Number]) as Match_FK,
+    IF(NUM([Tournament Date]) > $(vOneYearAgo), 1, 0) as Flag_52WeeksAgo,
+    IF([Tournament Type] = 1, // = "Grand Slam" as a number from a Dual() field
+		SubField([Tournament ID], '-', 1) & '#|#' &
+		ApplyMap('GSTournamentName', [Tournament Name]) & '#|#'	& LOWER(PURGECHAR(Opponent, '¦`¬!"£$€%^&*()_-+={[}];:@~#,<.>?/\| '))
+		& '#|#' & LOWER(PURGECHAR([Loser Name], '¦`¬!"£$€%^&*()_-+={[}];:@~#,<.>?/\| '))) as %PointByPoint
+;
+LOAD 
+	 FileBaseName,
+	 Tour as %Tour,
+	 Circuit,
+	 AUTONUMBERHASH128(Circuit, Tour, [Tournament ID]) as %TournamentFK,
+	 [Tournament ID], 
+	 IF(Circuit = 'ATP Matches' AND WildMatch([Tournament Name], '* CH') <> 1 AND WildMatch([Tournament Name], '* Q') <> 1 AND LEFT([Tournament Name], 9) <> 'Davis Cup',
+	 [Match Number] - ApplyMap('MaxMatchNumber_Map', Circuit & '_' & [Tournament ID], NULL())) as [Match_Round_Temp1],
+	 ApplyMap('MaxMatchNumber_Map', Circuit & '_' & [Tournament ID], NULL()) as _%MAX_MATCHES,
+     mid([Match Number], index([Match Number],left(PurgeChar([Match Number], '0' ),1))) as [Match Number_NUM],
+     [Match Number], 
+	 [Tournament Date] as [Tournament Date FK],
+      Date(Date#([Tournament Date], 'YYYYMMDD')) as [Tournament Date],
+	 AUTONUMBERHASH128('Men', [Loser ID]) as PlayerID_FK,
+	 [Loser ID] as [Player ID],
+     SubField(ApplyMap('ATP_Last_Date_Rank_Map', [Loser ID], NULL()), '_', 1) as LastRank_DateNUM,
+     SubField(ApplyMap('ATP_Last_Date_Rank_Map', [Loser ID], NULL()), '_', 2) as LastRank,
+     [Loser ID],
+	 [Loser Seed],
+     [Loser Seed] as [Player Seed], 
+	 ApplyMap('Country_Map', IF([Loser Name] = 'Ivan Lendl', 'CZE', [Loser IOC]), 'No Country') as [Player Country],
+	 [Winner Name] as [Loser Name_ForReload],
+     [Loser IOC] as [Player IOC], 
+     [Loser Age] as [Player Age], 
+     [Loser Rank] as [Player Rank], 
+     [Loser Rank (Points)] as [Player Rank (Points)], 
+     [Loser Aces] as [Player Aces],
+     [Loser Double Faults] as [Player Double Faults], 
+     [Loser Service Points] as [Player Service Points],
+     [Loser 1st Serves In] as [Player 1st Serves In],
+     [Loser Service Points] - [Loser 1st Serves In] - [Loser Double Faults] as [Player 2nd Serves In],
+     [Loser 1st Serves Points Won] as [Player 1st Serves Points Won], 
+     [Loser 2nd Serves Points Won] as [Player 2nd Serves Points Won],
+     [Loser 1st Serves Points Won] + [Loser 2nd Serves Points Won] as [Player Service Points Won],
+     [Loser Service Points] - ([Loser 1st Serves Points Won] + [Loser 2nd Serves Points Won]) as [Player Service Points Lost],
+     [Loser Service Games] as [Player Service Games],
+     [Loser Breaks Points Saved] as [Player Breaks Points Saved], 
+     [Loser Breaks Points Faced] as [Player Breaks Points Faced],
+	 'Loser' as [Winner/Loser Flag],
+     Score,
+     SubStringCount(Trim(Purgechar(Score, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')), ' ') + 1 as [Sets Played],
+//Counting Games Won
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 1), '-', 2), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 2), '-', 2), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 3), '-', 2), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 4), '-', 2), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 5), '-', 2), '(', 1)), 0) as [Count of Games Won],
+//Counting Games Lost
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 1), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 2), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 3), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 4), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 5), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0) as [Count of Games Lost],
+//Counting Bagels Given
+	 SubStringCount(Text(SubField(SubField(SubField(Score, ' ', 1), '-', 1), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 2), '-', 1), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 3), '-', 1), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 4), '-', 1), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 5), '-', 1), '(', 1)), '0') as [Bagel Delivery],
+//Counting Bagels Received
+	 SubStringCount(Text(SubField(SubField(SubField(Score, ' ', 1), '-', 2), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 2), '-', 2), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 3), '-', 2), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 4), '-', 2), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 5), '-', 2), '(', 1)), '0') as [Bagels Received],
+//End of transformation
+     [Best of (Sets)],
+     Round,
+     IF(Round = 'F', Dual('Finals', 1),
+		IF(Round = 'SF', Dual('Semi-Finals', 2),
+			IF(Round = 'QF', Dual('Quarter-Finals', 3),
+				IF(Round = 'R16', Dual('R16', 4),
+					IF(Round = 'R32', Dual('R32', 5),
+						IF(Round = 'R64', Dual('R64', 6),
+							IF(Round = 'R128', Dual('R128', 7)))))))) as [Round in Main Draw],
+     IF(LEN(TRIM(Minutes)) > 0, Minutes, NULL()) as Minutes,
+     IF(ALT(Minutes, 0) > 0, 1, 0) as BoS01,
+     IF([Circuit] = 'ATP Tour' OR ISNULL([Circuit]),
+     	IF([Tournament Name] = 'Wimbledon' OR [Tournament Name] = 'Roland Garros' OR [Tournament Name] = 'US Open' OR [Tournament Name] = 'Australian Open', Dual('Grand Slams', 1),
+     	IF(WildMatch([Tournament Name], '* CH') = 1, Dual('Challenger', 6),
+     		IF(WildMatch([Tournament Name], '* Q') = 1, Dual('ATP Tour - Quali', 4),
+     			IF(LEFT([Tournament Name], 9) = 'Davis Cup', Dual('Davis Cup', 8),
+     				IF(Right([Tournament Name], 7) = 'Masters', Dual('ATP Masters', 2),
+			     		IF(WildMatch([Tournament Name], '*Masters *') = 1, Dual('Masters - Quali', 5),
+	 			     		IF(Match([Tournament Name], '* F*') = 1 OR Match([Tournament Name], '* FUTURES*') = 1, Dual('Futures', 7),
+     								Dual('ATP Tour', 3)))))))), dual([Circuit], 10)) as [Tournament Type],
+	1 as [Count of Matches],
+	//for PointByPoint key
+	[Winner Name] as Opponent,
+	[Winner IOC] as Cty_Opponent,
+	[Loser Name],
+	[Tournament Name]
+FROM [$(vRootFolder)QVD\ATP_Data.qvd] (QVD);
+///$tab 4b. Final QVD Build - WTA
+TRACE ********************* 4b. Final QVD Build - WTA tab *********************;
+
+LET vReloadFromQVD_Start = NUM(Now());
+
+OneYearAgo:
+LOAD
+	NUM(AddYears(MAX(Date(Date#([Tournament Date], 'YYYYMMDD'))), -1)) as OneYearAgo
+FROM [$(vRootFolder)QVD\WTA_Data.qvd] (QVD);
+
+LET vOneYearAgo = PEEK('OneYearAgo', 0, 'OneYearAgo');
+DROP TABLE OneYearAgo;
+
+IF ALT(FileTime('$(vRootFolder)QVD\WTA_PlayersLastRank.qvd'), 0) > 0 THEN
+	WTA_Last_Date_Rank_Map:
+	MAPPING LOAD 
+		 [Player ID] as [WTA Player ID],
+	     WTA_Last_Date_Rank_Map
+	FROM [$(vRootFolder)QVD\WTA_PlayersLastRank.qvd] (QVD);
+END IF;
+
+
+WildMatchString:
+LOAD
+	'*F' &RowNo() & '*' as RowNo
+AutoGenerate(75);
+
+WildMatchStrings:
+LOAD
+	CHR(39) & Concat(DISTINCT RowNo, CHR(39) & ',' & CHR(39)) & CHR(39) as WildMatchStrings
+RESIDENT WildMatchString;
+
+DROP TABLE WildMatchString;
+
+LET vWildMatchStrings = PEEK('WildMatchStrings', 0, 'WildMatchStrings');
+
+DROP TABLE WildMatchStrings;
+
+//Country Name Mapping
+Country_Mapping_Temp:
+LOAD IOC_Code, 
+     Country,
+     1 as Dummy
+FROM [$(vRootFolder)SupportData\IOC_Country_Codes.csv]
+(txt, codepage is 1252, embedded labels, delimiter is ',', msq);
+
+Concatenate(Country_Mapping_Temp)
+LOAD SubField(Obsolete_IOC_Codes, ',') as IOC_Code, 
+     Country,
+     2 as Dummy
+FROM [$(vRootFolder)SupportData\IOC_Country_Codes.csv]
+(txt, codepage is 1252, embedded labels, delimiter is ',', msq);
+
+Country_Map:
+MAPPING LOAD IOC_Code, Country RESIDENT Country_Mapping_Temp WHERE LEN(IOC_Code) > 1;
+
+DROP TABLE Country_Mapping_Temp;
+
+//End of country name mapping
+MaxMatchNumber_Map:
+MAPPING LOAD
+	 FK_Circuit_TournID,
+	 LastMatchNumber
+FROM [$(vRootFolder)QVD\WTA_MaxMatchNumber_Map.qvd] (QVD);
+
+TRACE ********************* Final QVD Build - WTA Winners *********************;
+
+//Match winners
+WTA_MatchData_Winner:
+NoConcatenate
+LOAD
+	NUM([Round in Main Draw]) as Round_NUM,
+	ApplyMap('Round_NUM_Map', [Round in Main Draw]) as Round_NUM_Map,
+	*,
+	IF([Player Rank] > 0 AND [Player Rank] <= 10, Dual('Top 10', 1),
+		IF([Player Rank] > 10 AND [Player Rank] <= 20, Dual('11 - 20', 2),
+			IF([Player Rank] > 20 AND [Player Rank] <= 50, Dual('21 - 50', 3),
+				IF([Player Rank] > 50 AND [Player Rank] <= 100, Dual('51 - 100', 4),
+					IF([Player Rank] > 100 AND [Player Rank] <= 120, Dual('101 - 120', 5),
+						IF([Player Rank] > 120 AND [Player Rank] <= 150, Dual('121 - 150', 6),
+							IF([Player Rank] > 150 AND [Player Rank] <= 200, Dual('151 - 200', 7),
+								IF([Player Rank] > 200 AND [Player Rank] <= 300, Dual('201 - 300', 8),
+									IF([Player Rank] > 300 AND [Player Rank] <= 400, Dual('301 - 400', 9),
+										IF([Player Rank] > 400 AND [Player Rank] <= 500, Dual('401 - 500', 10),
+											IF([Player Rank] > 500, Dual('501 +', 11)))))))))))) as [Player Rank Buckets],
+	IF(_%MAX_MATCHES > 7, NUM(-1 * [Match_Round_Temp1]), NULL())
+			 as _%TEMP_RESULT,
+	IF(_%MAX_MATCHES > 7,
+		IF(_%MAX_MATCHES >= 8 AND _%MAX_MATCHES <= 16, '16',
+			IF(_%MAX_MATCHES >= 17 AND _%MAX_MATCHES <= 45, '32',
+				IF(_%MAX_MATCHES >= 46 AND _%MAX_MATCHES <= 79, '64',
+					IF(_%MAX_MATCHES >= 80 AND _%MAX_MATCHES <= 128, '128'))))) as _%MAX_MATCHES_GROUPING,
+	AUTONUMBERHASH128('Women', [Tournament Date FK], [Tournament ID], Circuit, [Match Number]) as Match_FK,
+	AUTONUMBERHASH128([Tournament ID], [Player ID]) as WinnerJoinField,
+	AUTONUMBERHASH128(%Tour, NUM([Tournament Date]), [Player ID]) as PlayerProgression_FK,
+    IF(NUM([Tournament Date]) > $(vOneYearAgo), 1, 0) as Flag_52WeeksAgo,
+    IF([Tournament Type] = 1, // = "Grand Slam" as a number from a Dual() field
+		SubField([Tournament ID], '-', 1) & '#|#' &
+		ApplyMap('GSTournamentName', [Tournament Name]) & '#|#'	& LOWER(PURGECHAR([Winner Name], '¦`¬!"£$€%^&*()_-+={[}];:@~#,<.>?/\| '))
+		& '#|#' & LOWER(PURGECHAR(Opponent, '¦`¬!"£$€%^&*()_-+={[}];:@~#,<.>?/\| '))) as %PointByPoint
+;
+LOAD 
+	 FileBaseName,
+	 Tour as %Tour,
+	 Circuit,
+	 AUTONUMBERHASH128(Circuit, Tour, [Tournament ID]) as %TournamentFK,
+//	 AUTONUMBERHASH128(Circuit & '_' & Tour & '_' & [Tournament ID]) as %TournamentFK,
+	 [Tournament ID],
+	 IF(Circuit = 'WTA Matches' AND WildMatch([Tournament Name], '* CH') <> 1 AND WildMatch([Tournament Name], '* Q') <> 1 AND LEFT([Tournament Name], 7) <> 'Fed Cup',
+	 [Match Number] - ApplyMap('MaxMatchNumber_Map', Circuit & '_' & [Tournament ID], NULL())) as [Match_Round_Temp1],
+	 ApplyMap('MaxMatchNumber_Map', Circuit & '_' & [Tournament ID], NULL()) as _%MAX_MATCHES,
+     mid([Match Number], index([Match Number],left(PurgeChar([Match Number], '0'),1))) as [Match Number_NUM],
+     [Match Number], 
+	 [Tournament Date] as [Tournament Date FK],
+      Date(Date#([Tournament Date], 'YYYYMMDD')) as [Tournament Date],
+	 AUTONUMBERHASH128('Women',[Winner ID]) as PlayerID_FK,
+	 [Winner ID] as [Player ID],
+	 SubField(ApplyMap('WTA_Last_Date_Rank_Map', [Winner ID], NULL()), '_', 1) as LastRank_DateNUM,
+	 SubField(ApplyMap('WTA_Last_Date_Rank_Map', [Winner ID], NULL()), '_', 2) as LastRank,
+	 [Winner Seed],
+     [Winner Seed] as [Player Seed], 
+	 ApplyMap('Country_Map', [Winner IOC], 'No Country') as [Player Country],
+	 [Winner Name] as [Winner Name_ForReload],
+     [Winner IOC] as [Player IOC], 
+     [Winner Age] as [Player Age], 
+     [Winner Rank] as [Player Rank], 
+     [Winner Rank (Points)] as [Player Rank (Points)], 
+     [Winner Aces] as [Player Aces],
+     [Winner Double Faults] as [Player Double Faults], 
+     [Winner Service Points] as [Player Service Points],
+     [Winner 1st Serves In] as [Player 1st Serves In],
+     [Winner Service Points] - [Winner 1st Serves In] - [Winner Double Faults] as [Player 2nd Serves In],
+     [Winner 1st Serves Points Won] as [Player 1st Serves Points Won], 
+     [Winner 2nd Serves Points Won] as [Player 2nd Serves Points Won],
+     [Winner 1st Serves Points Won] + [Winner 2nd Serves Points Won] as [Player Service Points Won],
+     [Winner Service Points] - ([Winner 1st Serves Points Won] + [Winner 2nd Serves Points Won]) as [Player Service Points Lost],
+     [Winner Service Games] as [Player Service Games],
+     [Winner Breaks Points Saved] as [Player Breaks Points Saved], 
+     [Winner Breaks Points Faced] as [Player Breaks Points Faced],
+	 'Winner' as [Winner/Loser Flag],
+     Score,
+     SubStringCount(Trim(Purgechar(Score, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')), ' ') + 1 as [Sets Played],
+//Counting Games Won
+	 ALT(NUM(SubField(SubField(Score, ' ', 1), '-', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(Score, ' ', 2), '-', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(Score, ' ', 3), '-', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(Score, ' ', 4), '-', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(Score, ' ', 5), '-', 1)), 0) as [Count of Games Won],
+//Counting Games Lost
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 1), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 2), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 3), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 4), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 5), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0) as [Count of Games Lost],
+//Counting Bagels Given	 
+	 SubStringCount(Text(SubField(SubField(Score, ' ', 1), '-', 2))
+	 &
+	 Text(SubField(SubField(Score, ' ', 2), '-', 2))
+	 &
+	 Text(SubField(SubField(Score, ' ', 3), '-', 2))
+	 &
+	 Text(SubField(SubField(Score, ' ', 4), '-', 2))
+	 &
+	 Text(SubField(SubField(Score, ' ', 5), '-', 2)), '0') as [Bagel Delivery],
+//Counting Bagels Received	 
+	 SubStringCount(Text(SubField(SubField(Score, ' ', 1), '-', 1))
+	 &
+	 Text(SubField(SubField(Score, ' ', 2), '-', 1))
+	 &
+	 Text(SubField(SubField(Score, ' ', 3), '-', 1))
+	 &
+	 Text(SubField(SubField(Score, ' ', 4), '-', 1))
+	 &
+	 Text(SubField(SubField(Score, ' ', 5), '-', 1)), '0') as [Bagels Received],
+//End of transformation
+     [Best of (Sets)],
+    IF(WildMatch(Circuit, '*qualif*') = 0, Round, 'Q' & Round) as  Round,     
+	IF(WildMatch(Circuit, '*qualif*') = 0,
+     IF(Round = 'F', Dual('Finals', 1),
+		IF(Round = 'SF', Dual('Semi-Finals', 2),
+			IF(Round = 'QF', Dual('Quarter-Finals', 3),
+				IF(Round = 'R16', Dual('R16', 4),
+					IF(Round = 'R32', Dual('R32', 5),
+						IF(Round = 'R64', Dual('R64', 6),
+							IF(Round = 'R128', Dual('R128', 7))))))))
+							) as [Round in Main Draw],
+     IF(LEN(TRIM(Minutes)) > 0, Minutes, NULL()) as Minutes,
+     IF(ALT(Minutes, 0) > 0, 1, 0) as BoS01,
+     IF([Circuit] = 'WTA Tour' OR ISNULL([Circuit]),
+     	IF([Tournament Name] = 'Wimbledon' OR [Tournament Name] = 'Roland Garros' OR [Tournament Name] = 'US Open' /*OR [Tournament Name] = 'Us Open'*/ OR [Tournament Name] = 'Australian Open', Dual('Grand Slams', 1),
+     		IF(WildMatch([Tournament Name], '* CH') = 1, Dual('Challenger', 60),
+     			IF(WildMatch([Tournament Name], '* Q') = 1, Dual('WTA Tour - Quali', 40),
+     				IF(LEFT([Tournament Name], 7) = 'Fed Cup', Dual('Fed Cup', 80),
+     					IF(Right([Tournament Name], 7) = 'Masters', Dual('WTA Masters', 20),
+			     			IF(WildMatch([Tournament Name], '*Masters *') = 1, Dual('Masters - Quali', 50),
+					  			IF(WildMatch([Tournament Name], $(vWildMatchStrings)) <> 0 OR WildMatch([Tournament Name], '* FUTURES*') = 1, Dual('Futures', 70),
+     								Dual('WTA Tour', 30)))))))), dual([Circuit], 100)) as [Tournament Type],
+	1 as [Count of Matches],
+	//for PointByPoint key
+	[Winner Name],
+	[Loser Name] as Opponent,
+	[Loser IOC] as Cty_Opponent,
+	[Tournament Name]
+FROM [$(vRootFolder)QVD\WTA_Data.qvd] (QVD);
+
+TournamentWinner:
+LEFT JOIN(WTA_MatchData_Winner)
+LOAD
+	AUTONUMBERHASH128([Tournament ID], [Player ID]) as WinnerJoinField,
+	'Yes' as TournamentWinner_Flag
+RESIDENT WTA_MatchData_Winner WHERE Round = 'F';
+
+//Final build
+WTA_MatchData_Final:
+LOAD
+	*,
+	IF(TournamentWinner_Flag = 'Yes', 	AUTONUMBERHASH128('Women', [Tournament ID], [Player ID]), NULL()) as SpecialStats01_FK
+RESIDENT WTA_MatchData_Winner;
+
+DROP TABLE WTA_MatchData_Winner;
+
+TRACE ********************* Final QVD Build - WTA Losers *********************;
+
+//Match Losers
+Concatenate(WTA_MatchData_Final)
+LOAD
+	*,
+	NUM([Round in Main Draw]) as Round_NUM,
+	ApplyMap('Round_NUM_Map', [Round in Main Draw]) as Round_NUM_Map,
+	IF([Player Rank] > 0 AND [Player Rank] <= 10, Dual('Top 10', 1),
+		IF([Player Rank] > 10 AND [Player Rank] <= 20, Dual('11 - 20', 2),
+			IF([Player Rank] > 20 AND [Player Rank] <= 50, Dual('21 - 50', 3),
+				IF([Player Rank] > 50 AND [Player Rank] <= 100, Dual('51 - 100', 4),
+					IF([Player Rank] > 100 AND [Player Rank] <= 120, Dual('101 - 120', 5),
+						IF([Player Rank] > 120 AND [Player Rank] <= 150, Dual('121 - 150', 6),
+							IF([Player Rank] > 150 AND [Player Rank] <= 200, Dual('151 - 200', 7),
+								IF([Player Rank] > 200 AND [Player Rank] <= 300, Dual('201 - 300', 8),
+									IF([Player Rank] > 300 AND [Player Rank] <= 400, Dual('301 - 400', 9),
+										IF([Player Rank] > 400 AND [Player Rank] <= 500, Dual('401 - 500', 10),
+											IF([Player Rank] > 500, Dual('501 +', 11)))))))))))) as [Player Rank Buckets],
+	IF(_%MAX_MATCHES > 7, NUM(-1 * [Match_Round_Temp1]), NULL())
+			 as _%TEMP_RESULT,
+	IF(_%MAX_MATCHES > 7,
+		IF(_%MAX_MATCHES >= 8 AND _%MAX_MATCHES <= 16, '16',
+			IF(_%MAX_MATCHES >= 17 AND _%MAX_MATCHES <= 45, '32',
+				IF(_%MAX_MATCHES >= 46 AND _%MAX_MATCHES <= 79, '64',
+					IF(_%MAX_MATCHES >= 80 AND _%MAX_MATCHES <= 128, '128'))))) as _%MAX_MATCHES_GROUPING,
+	AUTONUMBERHASH128('Women', [Tournament Date FK], [Tournament ID], Circuit, [Match Number]) as Match_FK,
+    IF(NUM([Tournament Date]) > $(vOneYearAgo), 1, 0) as Flag_52WeeksAgo,
+
+    IF([Tournament Type] = 1, // = "Grand Slam" as a number from a Dual() field
+		SubField([Tournament ID], '-', 1) & '#|#' &
+		ApplyMap('GSTournamentName', [Tournament Name]) & '#|#'	& LOWER(PURGECHAR(Opponent, '¦`¬!"£$€%^&*()_-+={[}];:@~#,<.>?/\| '))
+		& '#|#' & LOWER(PURGECHAR([Loser Name], '¦`¬!"£$€%^&*()_-+={[}];:@~#,<.>?/\| '))) as %PointByPoint
+;
+LOAD 
+	 FileBaseName,
+	 Tour as %Tour,
+	 Circuit,
+	 [Tournament ID],
+	 AUTONUMBERHASH128(Circuit, Tour, [Tournament ID]) as %TournamentFK,
+	 IF(Circuit = 'WTA Matches' AND WildMatch([Tournament Name], '* CH') <> 1 AND WildMatch([Tournament Name], '* Q') <> 1 AND LEFT([Tournament Name], 7) <> 'Fed Cup',
+	 [Match Number] - ApplyMap('MaxMatchNumber_Map', Circuit & '_' & [Tournament ID], NULL()), NULL()) as [Match_Round_Temp1],
+	 ApplyMap('MaxMatchNumber_Map', Circuit & '_' & [Tournament ID], NULL()) as _%MAX_MATCHES,
+     mid([Match Number], index([Match Number],left(PurgeChar([Match Number], '0' ),1))) as [Match Number_NUM],
+     [Match Number], 
+	 [Tournament Date] as [Tournament Date FK],
+      Date(Date#([Tournament Date], 'YYYYMMDD')) as [Tournament Date],
+	 AUTONUMBERHASH128('Women', [Loser ID]) as PlayerID_FK,
+	 [Loser ID] as [Player ID],
+	 SubField(ApplyMap('WTA_Last_Date_Rank_Map', [Loser ID], NULL()), '_', 1) as LastRank_DateNUM,
+	 SubField(ApplyMap('WTA_Last_Date_Rank_Map', [Loser ID], NULL()), '_', 2) as LastRank,
+	 [Loser Seed],
+     [Loser Seed] as [Player Seed],
+	 ApplyMap('Country_Map', [Loser IOC], 'No Country') as [Player Country],
+	 [Winner Name] as [Loser Name_ForReload],
+     [Loser IOC] as [Player IOC], 
+     [Loser Age] as [Player Age], 
+     [Loser Rank] as [Player Rank], 
+     [Loser Rank (Points)] as [Player Rank (Points)], 
+     [Loser Aces] as [Player Aces],
+     [Loser Double Faults] as [Player Double Faults], 
+     [Loser Service Points] as [Player Service Points],
+     [Loser 1st Serves In] as [Player 1st Serves In],
+     [Loser Service Points] - [Loser 1st Serves In] - [Loser Double Faults] as [Player 2nd Serves In],
+     [Loser 1st Serves Points Won] as [Player 1st Serves Points Won], 
+     [Loser 2nd Serves Points Won] as [Player 2nd Serves Points Won],
+     [Loser 1st Serves Points Won] + [Loser 2nd Serves Points Won] as [Player Service Points Won],
+     [Loser Service Points] - ([Loser 1st Serves Points Won] + [Loser 2nd Serves Points Won]) as [Player Service Points Lost], 
+     [Loser Service Games] as [Player Service Games],
+     [Loser Breaks Points Saved] as [Player Breaks Points Saved], 
+     [Loser Breaks Points Faced] as [Player Breaks Points Faced],
+	 'Loser' as [Winner/Loser Flag],
+     Score,
+     SubStringCount(Trim(Purgechar(Score, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')), ' ') + 1 as [Sets Played],
+//Counting Games Won
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 1), '-', 2), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 2), '-', 2), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 3), '-', 2), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 4), '-', 2), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(SubField(SubField(Score, ' ', 5), '-', 2), '(', 1)), 0) as [Count of Games Won],
+//Counting Games Lost
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 1), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 2), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 3), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 4), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0)
+	 +
+	 ALT(NUM(SubField(PURGECHAR(SubField(SubField(Score, ' ', 5), '-', 2), 'ABDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'), '(', 1)), 0) as [Count of Games Lost],
+//Counting Bagels Given
+	 SubStringCount(Text(SubField(SubField(SubField(Score, ' ', 1), '-', 1), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 2), '-', 1), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 3), '-', 1), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 4), '-', 1), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 5), '-', 1), '(', 1)), '0') as [Bagel Delivery],
+//Counting Bagels Received
+	 SubStringCount(Text(SubField(SubField(SubField(Score, ' ', 1), '-', 2), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 2), '-', 2), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 3), '-', 2), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 4), '-', 2), '(', 1))
+	 &
+	 Text(SubField(SubField(SubField(Score, ' ', 5), '-', 2), '(', 1)), '0') as [Bagels Received],
+//End of transformation
+     [Best of (Sets)],
+     IF(WildMatch(Circuit, '*qualif*') = 0, Round, 'Q' & Round) as  Round,     
+	IF(WildMatch(Circuit, '*qualif*') = 0,
+     IF(Round = 'F', Dual('Finals', 1),
+		IF(Round = 'SF', Dual('Semi-Finals', 2),
+			IF(Round = 'QF', Dual('Quarter-Finals', 3),
+				IF(Round = 'R16', Dual('R16', 4),
+					IF(Round = 'R32', Dual('R32', 5),
+						IF(Round = 'R64', Dual('R64', 6),
+							IF(Round = 'R128', Dual('R128', 7))))))))
+							) as [Round in Main Draw],
+     IF(LEN(TRIM(Minutes)) > 0, Minutes, NULL()) as Minutes,
+     IF(ALT(Minutes, 0) > 0, 1, 0) as BoS01, 
+     IF([Circuit] = 'WTA Tour' OR ISNULL([Circuit]),
+     	IF([Tournament Name] = 'Wimbledon' OR [Tournament Name] = 'Roland Garros' OR [Tournament Name] = 'US Open' /*OR [Tournament Name] = 'Us Open'*/ OR [Tournament Name] = 'Australian Open', Dual('Grand Slams', 1),
+     	IF(WildMatch([Tournament Name], '* CH') = 1, Dual('Challenger', 60),
+     		IF(WildMatch([Tournament Name], '* Q') = 1, Dual('WTA Tour - Quali', 40),
+     			IF(LEFT([Tournament Name], 7) = 'Fed Cup', Dual('Fed Cup', 80),
+     				IF(Right([Tournament Name], 7) = 'Masters', Dual('WTA Masters', 20),
+			     		IF(WildMatch([Tournament Name], '*Masters *') = 1, Dual('Masters - Quali', 50),
+	 			     		IF(Match([Tournament Name], '* F*') = 1 OR Match([Tournament Name], '* FUTURES*') = 1, Dual('Futures', 70),
+     								Dual('WTA Tour', 30)))))))), dual([Circuit], 100)) as [Tournament Type],
+	1 as [Count of Matches],
+	//for PointByPoint key
+	[Winner Name] as Opponent,
+	[Winner IOC] as Cty_Opponent,
+	[Loser Name],
+	[Tournament Name]
+FROM [$(vRootFolder)QVD\WTA_Data.qvd] (QVD);
+
+Concatenate(MatchData)
+LOAD * RESIDENT WTA_MatchData_Final;
+
+DROP TABLE WTA_MatchData_Final;
+
+DROP FIELD [Player ID];
+
+//for PointByPoint FK, so not needed anymore
+DROP FIELD [Winner Name] FROM MatchData;
+DROP FIELD [Loser Name] FROM MatchData;
+DROP FIELD [Tournament Name] FROM MatchData;
+///$tab 4c1. Davis Cup
+TRACE ********************* 4c1. Davis Cup tab *********************;
+
+DavisCupResults:
+LOAD
+	Circuit & '_' & %Tour & '_' & [Tournament ID] & '_' & [Player Country] as %DavisCupFK,
+	COUNT(Match_FK) as [CountryMap]
+RESIDENT MatchData
+WHERE [Winner/Loser Flag] = 'Winner'
+AND TEXT([Tournament Type]) = 'Davis Cup'
+GROUP BY Circuit, %Tour, [Tournament ID], [Player Country];
+
+DavisCupResult_Map:
+MAPPING LOAD
+	%DavisCupFK,
+	[CountryMap] as DavisCupResult
+RESIDENT DavisCupResults;
+
+DROP TABLE DavisCupResults;
+
+SET ErrorMode = 0;
+
+IF ALT(YEAR(QvdCreateTime('$(vRootFolder)QVD\DavisCupFinals.qvd')), 0) <> YEAR(TODAY()) THEN
+	DavisCupFinals:
+	LOAD
+		'Men' & '_' & Year as %CupFK,
+		'Men' as [Cup Tour],
+		 Year as [Cup Year],
+		 IF(WildMatch(Winner, '*not*contest*') <> 0, 'Not Contested',
+		 	IF(Winner = 'British Isles', 'Great Britain',
+		 		IF(Winner = 'Australasia', 'Australia', Winner))) as [Cup Winner],
+		 IF(WildMatch(Winner, '*not*contest*') <> 0, 'Not Contested',
+		 	IF([Runner-up] = 'British Isles', 'Great Britain',
+		 		IF([Runner-up] = 'Australasia', 'Australia', [Runner-up]))) as [Cup Runner-up],
+		IF(WildMatch(Winner, '*not*contest*') <> 0, 'Not Contested',
+			IF(WildMatch(Score, '*w/o*') <> 0, 'WO', Replace(Replace(Score, 'â€“', '-'), '*', ''))) as [Cup Finals Score],
+	     IF(WildMatch(Winner, '*not*contest*') <> 0, 'Not Contested', [Finals Venue (surface)]) as [Cup Finals Venue (surface)], 
+	     IF(WildMatch(Winner, '*not*contest*') <> 0, 'Not Contested', Location) as [Cup Location]
+	FROM [https://en.wikipedia.org/wiki/List_of_Davis_Cup_champions]
+	(html, codepage is 1252, embedded labels, table is "Davis Cup champions[36]");
+
+	STORE DavisCupFinals INTO [$(vRootFolder)QVD\DavisCupFinals.qvd] (QVD);
+	DROP TABLE DavisCupFinals;
+END IF;
+
+SET ErrorMode = 1;
+
+CupFinals:
+LOAD * FROM [$(vRootFolder)QVD\DavisCupFinals.qvd] (QVD);
+
+CupFinalistCountries:
+LOAD
+	'Men' & '_' & [Cup Year] as %CupFK,
+	'Winner' as CupFlag,
+	[Cup Winner] as [Cup Country]
+RESIDENT CupFinals;
+
+Concatenate(CupFinalistCountries)
+LOAD
+	'Men' & '_' & [Cup Year] as %CupFK,
+	'Runner-up' as CupFlag,
+	[Cup Runner-up] as [Cup Country]
+RESIDENT CupFinals;
+///$tab 4c2. FED Cup
+TRACE ********************* 4c2. FED Cup tab *********************;
+
+FedCupResults:
+LOAD
+	Circuit & '_' & %Tour & '_' & [Tournament ID] & '_' & [Player Country] as %FedCupFK,
+	COUNT(Match_FK) as [CountryMap]
+RESIDENT MatchData
+WHERE [Winner/Loser Flag] = 'Winner'
+AND TEXT([Tournament Type]) = 'Fed Cup'
+GROUP BY Circuit, %Tour, [Tournament ID], [Player Country];
+
+FedCupResult_Map:
+MAPPING LOAD
+	%FedCupFK,
+	[CountryMap] as FedCupResult
+RESIDENT FedCupResults;
+
+DROP TABLE FedCupResults;
+
+SET ErrorMode = 0;
+
+IF ALT(YEAR(QvdCreateTime('$(vRootFolder)QVD\FedCupFinals.qvd')), 0) <> YEAR(TODAY()) THEN
+	FedCupFinals:
+	LOAD
+		'Women' & '_' & Year as %CupFK,
+		'Women' as [Cup Tour],
+		 Year as [Cup Year],
+		 SubField(Winner, ' (', 1) as [Cup Winner],
+		 SubField([Runner-up], ' (', 1) as [Cup Runner-up],
+		 Replace(Replace(Score, 'â€“', '-'), '*', '') as [Cup Finals Score],
+	     "Finals Venue (surface)[1]" as [Cup Finals Venue (surface)], 
+	     City as [Cup Location]
+	FROM [https://en.wikipedia.org/wiki/List_of_Fed_Cup_champions]
+	(html, codepage is 1252, embedded labels, table is @1);
+
+	STORE FedCupFinals INTO [$(vRootFolder)QVD\FedCupFinals.qvd] (QVD);
+	DROP TABLE FedCupFinals;
+END IF;
+
+SET ErrorMode = 1;
+
+FedCupWinners:
+Concatenate(CupFinals) LOAD * FROM [$(vRootFolder)QVD\FedCupFinals.qvd] (QVD);
+
+FedCupFinalistCountries:
+Concatenate(CupFinalistCountries)
+LOAD
+	'Women' & '_' & [Cup Year] as %CupFK,
+	'Winner' as CupFlag,
+	[Cup Winner] as [Cup Country]
+RESIDENT CupFinals WHERE [Cup Tour] = 'Women';
+
+Concatenate(CupFinalistCountries)
+LOAD
+	'Women' & '_' & [Cup Year] as %CupFK,
+	'Runner-up' as CupFlag,
+	[Cup Runner-up] as [Cup Country]
+RESIDENT CupFinals WHERE [Cup Tour] = 'Women';
+///$tab 4d1. ATP Tournament Info
+TRACE ********************* 4d1. ATP Tournament Info tab *********************;
+
+ATP_Tournament_Info:
+LOAD
+     [Tournament Name] as KEY_ATP_Tournament_Info,
+     [ATP Tournament Name] & '#|#' & [ATP Class] & '#|#' & 
+     PICK(WildMatch([Prize Money], '*$*', '*€*'), 'USD', 'EUR') 
+     & '#|#' & TRIM(PurgeChar([Prize Money], '$€,')) 
+	& '#|#' & TRIM(PurgeChar([Total Financial Commitment], '$€,'))
+	& '#|#' & [Prize Money] & '#|#' & [Total Financial Commitment]
+	as Name_Class_XR_Prize_FinCommit_PrizeTxt_FinCommitTxt
+FROM
+[$(vRootFolder)SupportData\ATPInfo.csv]
+(txt, codepage is 1252, embedded labels, delimiter is ',', msq);
+
+
+ATP_Tournament_Info_Map:
+MAPPING LOAD
+	KEY_ATP_Tournament_Info as TournamentNameLinkField,
+	Name_Class_XR_Prize_FinCommit_PrizeTxt_FinCommitTxt as ATP_Tournament_Info_Map
+RESIDENT ATP_Tournament_Info;
+
+DROP TABLE ATP_Tournament_Info;
+///$tab 4d2. Tournament
+TRACE ********************* 4d2. Tournament - ATP Data *********************;
+
+TournamentData:
+LOAD DISTINCT
+	*,
+	ApplyMap('DavisCupResult_Map', %TournamentFK_Map & '_' & [Davis Cup - Country 1], 0) as [Davis Cup Total Score - Country 1],
+	ApplyMap('DavisCupResult_Map', %TournamentFK_Map & '_' & [Davis Cup - Country 2], 0) as [Davis Cup Total Score - Country 2],
+	IF(NOT(ISNULL([Grand Slams])), [Grand Slams],
+		IF(WildMatch([Tournament Type], 'Grand Slams', 'ATP Masters', 'ATP Tour') <> 0,
+			Subfield(ApplyMap('ATP_Tournament_Info_Map', [Tournament Name], NULL()), '#|#', 1))) as [ATP Tournament Name],
+	IF(WildMatch([Tournament Type], 'Grand Slams', 'ATP Masters', 'ATP Tour') <> 0,
+		Subfield(ApplyMap('ATP_Tournament_Info_Map', [Tournament Name], NULL()), '#|#', 3))	as [Prize Money Currency],
+	IF(WildMatch([Tournament Type], 'Grand Slams', 'ATP Masters', 'ATP Tour') <> 0,
+		Subfield(ApplyMap('ATP_Tournament_Info_Map', [Tournament Name], NULL()), '#|#', 4))	as [Prize Money],
+	IF(WildMatch([Tournament Type], 'Grand Slams', 'ATP Masters', 'ATP Tour') <> 0,
+		Subfield(ApplyMap('ATP_Tournament_Info_Map', [Tournament Name], NULL()), '#|#', 5))	as [Financial Commitment],
+	IF(WildMatch([Tournament Type], 'Grand Slams', 'ATP Masters', 'ATP Tour') <> 0,
+		Subfield(ApplyMap('ATP_Tournament_Info_Map', [Tournament Name], NULL()), '#|#', 6))	as [Prize Money - Text],
+	IF(WildMatch([Tournament Type], 'Grand Slams', 'ATP Masters', 'ATP Tour') <> 0,
+		Subfield(ApplyMap('ATP_Tournament_Info_Map', [Tournament Name], NULL()), '#|#', 7))	as [Financial Commitment - Text]
+;
+LOAD DISTINCT
+	*,
+	IF([Tournament Name] = 'Wimbledon' OR [Tournament Name] = 'Australian Open' OR [Tournament Name] = 'Roland Garros' OR [Tournament Name] = 'US Open', 'Grand Slam',
+		IF([Tournament Name] = 'Masters', 'WTF',
+			IF(WildMatch([Tournament Type], 'Grand Slams', 'ATP Masters', 'ATP Tour') <> 0,
+			Subfield(ApplyMap('ATP_Tournament_Info_Map', [Tournament Name], 'Other#|#Other'), '#|#', 2))
+		)
+	) as [Tournament Grade],
+	IF([Tournament Name] = 'Wimbledon' OR [Tournament Name] = 'Australian Open' OR [Tournament Name] = 'Roland Garros' OR [Tournament Name] = 'US Open', [Tournament Name]) as [Grand Slams],
+	Subfield(Subfield([Davis Cup Rubber], 'Davis Cup ', 2), ' ', 1) as [Davis Cup Group],
+	Replace(Subfield(Subfield([Davis Cup Rubber], 'Davis Cup ', 2), ' ', 2), ':', '') as [Davis Cup Round],
+	ApplyMap('Country_Map', Subfield(Subfield([Davis Cup Rubber], ': ', 2), ' vs ', 1)) as [Davis Cup - Country 1],
+	ApplyMap('Country_Map', Subfield(Subfield([Davis Cup Rubber], ': ', 2), ' vs ', 2)) as [Davis Cup - Country 2],
+	Subfield(Subfield([Davis Cup Rubber], ': ', 2), ' vs ', 1) as [Davis Cup - Country 1_ISO3],
+	Subfield(Subfield([Davis Cup Rubber], ': ', 2), ' vs ', 2) as [Davis Cup - Country 2_ISO3],
+	IF(LEN([Davis Cup Rubber]) > 0, 'Men', 'Men' & '_' & %DavisCupYear) as %CupFK,
+	IF(LEN([Davis Cup Rubber]) > 0, 'Men', 'Men' & '_' & %DavisCupYear) as %DavisCupFK
+;
+LOAD DISTINCT
+	 AUTONUMBERHASH128(Circuit, Tour, [Tournament ID]) as %TournamentFK,
+     IF(RIGHT([Tournament Name], 3) = ' CH', SubField([Tournament Name], ' CH', 1),
+	 	IF(RIGHT([Tournament Name], 2) = ' Q', SubField([Tournament Name], ' Q', 1),
+	 		IF(LEFT([Tournament Name], 9) = 'Davis Cup', 'Davis Cup', IF([Tournament Name] = 'Us Open', 'US Open', [Tournament Name])))) as [Tournament Name],
+     IF(	SubStringCount([Tournament Name], ' ') >= 3,
+		 		Trim(Capitalize(Replace(Replace(Replace(PurgeChar(LEFT([Tournament Name], Index([Tournament Name], ' ', 3)), '1234567890/'), ' CH', ''), ' Q', ''), ' Masters', ''))),
+			 		Capitalize(Trim(Replace(Replace(Replace(Replace(Replace(Replace(Replace(PurgeChar([Tournament Name], '1234567890/'), ' CH', ''), ' Q', ''), ' F', ''), ' WCT', ''), ' FUTURES', ''), 'Masters', ''), '-', ' ')))
+	 	) as [Tournament Name - Cleaned],
+	 IF(WildMatch([Tournament Name], '*davis*cup*') <> 0, [Tournament Name]) as [Davis Cup Rubber],
+     IF(Surface = 'Carpet', 'Syn./Carpet', Surface) as Surface,
+     [Draw Size],
+     [Tournament Level], 
+	1 as [Count of Tournament],
+	Subfield([Tournament ID], '-', 1) as %DavisCupYear,
+	Circuit & '_' & Tour & '_' & [Tournament ID] as %TournamentFK_Map,
+	//Following fields: Only for applymap above
+	[Tournament Date],
+	ApplyMap('Tournament_Type_Map', [Tournament ID]) as [Tournament Type]
+FROM [$(vRootFolder)QVD\ATP_Data.qvd] (QVD);
+
+DROP FIELD [Tournament Date] FROM TournamentData;
+DROP FIELD [Tournament Type] FROM TournamentData;
+
+TRACE ********************* Tournament - WTA Data *********************;
+
+Concatenate(TournamentData)
+LOAD DISTINCT
+	*,
+	ApplyMap('FedCupResult_Map', %TournamentFK_Map & '_' & [Fed Cup - Country 1], 0) as [Fed Cup Total Score - Country 1],
+	ApplyMap('FedCupResult_Map', %TournamentFK_Map & '_' & [Fed Cup - Country 2], 0) as [Fed Cup Total Score - Country 2]
+;
+LOAD DISTINCT
+	*,
+	IF([Tournament Name] = 'Wimbledon' OR [Tournament Name] = 'Australian Open' OR [Tournament Name] = 'Roland Garros' OR [Tournament Name] = 'US Open', 'Grand Slam', 'Other') as [Tournament Grade],
+	IF([Tournament Name] = 'Wimbledon' OR [Tournament Name] = 'Australian Open' OR [Tournament Name] = 'Roland Garros' OR [Tournament Name] = 'US Open', [Tournament Name]) as [Grand Slams],
+	Subfield(Subfield([Fed Cup Rubber], 'Fed Cup ', 2), ' ', 1) as [Fed Cup Group],
+	Replace(Subfield(Subfield([Fed Cup Rubber], 'Fed Cup ', 2), ' ', 2), ':', '') as [Fed Cup Round],
+	ApplyMap('Country_Map', Subfield(Subfield([Fed Cup Rubber], ': ', 2), ' vs ', 1)) as [Fed Cup - Country 1],
+	ApplyMap('Country_Map', Subfield(Subfield([Fed Cup Rubber], ': ', 2), ' vs ', 2)) as [Fed Cup - Country 2],
+	Subfield(Subfield([Fed Cup Rubber], ': ', 2), ' vs ', 1) as [Fed Cup - Country 1_ISO3],
+	Subfield(Subfield([Fed Cup Rubber], ': ', 2), ' vs ', 2) as [Fed Cup - Country 2_ISO3],
+	IF(LEN([Fed Cup Rubber]) > 0, 'Women', 'Women' & '_' & %FedCupYear) as %CupFK,
+	IF(LEN([Fed Cup Rubber]) > 0, 'Women', 'Women' & '_' & %FedCupYear) as %FedCupFK
+;
+LOAD DISTINCT
+	 AUTONUMBERHASH128(Circuit, Tour, [Tournament ID]) as %TournamentFK,
+     IF(RIGHT([Tournament Name], 3) = ' CH', SubField([Tournament Name], ' CH', 1),
+	 	IF(RIGHT([Tournament Name], 2) = ' Q', SubField([Tournament Name], ' Q', 1),
+	 		IF(LEFT([Tournament Name], 7) = 'Fed Cup', 'Fed Cup', IF([Tournament Name] = 'Us Open', 'US Open', IF([Tournament Name] = 'French Open', 'Roland Garros', [Tournament Name]))))) as [Tournament Name],
+     IF(lower([Tournament Name]) = 'us open', 'US Open',
+     	IF(lower([Tournament Name]) = 'french open', 'Roland Garros',
+     IF(SubStringCount([Tournament Name], ' ') >= 3,
+		 		Trim(Capitalize(Replace(Replace(Replace(PurgeChar(LEFT([Tournament Name], Index([Tournament Name], ' ', 3)), '1234567890/'), ' CH', ''), ' Q', ''), ' Masters', ''))),
+			 		Capitalize(Trim(Replace(Replace(Replace(Replace(Replace(Replace(Replace(PurgeChar([Tournament Name], '1234567890/'), ' CH', ''), ' Q', ''), ' F', ''), ' WCT', ''), ' FUTURES', ''), 'Masters', ''), '-', ' ')))
+	 	))) as [Tournament Name - Cleaned],
+	 IF(WildMatch([Tournament Name], '*fed cup*') <> 0, [Tournament Name]) as [Fed Cup Rubber],
+     IF(Surface = 'Carpet', 'Syn./Carpet', Surface) as Surface, 
+     [Draw Size],
+     [Tournament Level],
+	1 as [Count of Tournament],
+	Subfield([Tournament ID], '-', 1) as %FedCupYear,
+	Circuit & '_' & Tour & '_' & [Tournament ID] as %TournamentFK_Map
+FROM [$(vRootFolder)QVD\WTA_Data.qvd] (QVD);
+
+DROP FIELD %DavisCupYear;
+DROP FIELD %FedCupYear;
+DROP FIELD %TournamentFK_Map;
+///$tab 4e1. Player - ATP
+TRACE ********************* 4e1. Player - ATP tab *********************;
+
+PlayerData_Temp:
+LOAD DISTINCT
+     [Winner ID] as [Player ID], 
+     [Winner Name] as [Player Name], 
+     [Winner Hand] as [Player Hand], 
+     [Winner Height] as [Player Height],
+     [Winner IOC] as [Player IOC],
+     Min([Winner Rank]) as [Highest Rank]
+FROM [$(vRootFolder)QVD\ATP_Data.qvd] (QVD)
+GROUP BY [Winner ID], [Winner Name], [Winner Hand], [Winner Height], [Winner IOC];
+
+MatchLoserData:
+Concatenate(PlayerData_Temp)
+LOAD DISTINCT
+	 [Loser ID] as [Player ID],
+     [Loser Name] as [Player Name], 
+     [Loser Hand] as [Player Hand], 
+     [Loser Height] as [Player Height],
+     [Loser IOC] as [Player IOC],
+     Min([Loser Rank]) as [Highest Rank]
+FROM [$(vRootFolder)QVD\ATP_Data.qvd] (QVD)
+GROUP BY [Loser ID], [Loser Name], [Loser Hand], [Loser Height], [Loser IOC];
+
+DOB_Map:
+MAPPING LOAD @1 as PlayerID,
+     Date(left(@5, 4) & '-' & right(left(@5, 6), 2) & '-' & right(@5, 2), 'YYYY-MM-DD') as [DOB]
+FROM [https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master/atp_players.csv]
+(txt, codepage is 1252, no labels, delimiter is ',', msq);
+
+PlayerData:
+NoConcatenate
+LOAD
+	*,
+	NUM(Date#([DOB], 'YYYY-MM-DD')) as DOB_NUM
+	;
+LOAD DISTINCT
+	AUTONUMBERHASH128('Men', [Player ID]) as PlayerID_FK,
+	[Player Name],
+	[Player Hand],
+	ApplyMap('DOB_Map', [Player ID], NULL())as [DOB],
+	[Player IOC] as Cty_Player,
+	[Player Height],
+	MIN([Highest Rank]) as [Highest Rank]
+RESIDENT PlayerData_Temp
+GROUP BY [Player ID], [Player Name], [Player Hand], [Player Height], [Player IOC];
+
+DROP TABLE PlayerData_Temp;
+
+PlayerNamesColumns:
+LOAD
+	 AUTONUMBERHASH128('Men', [Tournament Date], [Tournament ID], [Match Number]) as Match_FK,
+     [Winner Name]
+FROM [$(vRootFolder)QVD\ATP_Data.qvd] (QVD);
+
+LEFT JOIN (PlayerNamesColumns)
+LOAD
+	 AUTONUMBERHASH128('Men', [Tournament Date], [Tournament ID], [Match Number]) as Match_FK,
+     [Loser Name]
+FROM [$(vRootFolder)QVD\ATP_Data.qvd] (QVD);
+///$tab 4e2. Player - WTA
+TRACE ********************* 4e2. Player - WTA tab *********************;
+
+PlayerData_Temp:
+LOAD DISTINCT
+     [Winner ID] as [Player ID], 
+     [Winner Name] as [Player Name], 
+     [Winner Hand] as [Player Hand], 
+     [Winner Height] as [Player Height],
+     [Winner IOC] as [Player IOC],
+     Min([Winner Rank]) as [Highest Rank]
+FROM [$(vRootFolder)QVD\WTA_Data.qvd] (QVD)
+GROUP BY [Winner ID], [Winner Name], [Winner Hand], [Winner Height], [Winner IOC];
+
+MatchLoserData:
+Concatenate(PlayerData_Temp)
+LOAD DISTINCT
+	 [Loser ID] as [Player ID],
+     [Loser Name] as [Player Name], 
+     [Loser Hand] as [Player Hand], 
+     [Loser Height] as [Player Height],
+     [Loser IOC] as [Player IOC],
+     Min([Loser Rank]) as [Highest Rank]
+FROM [$(vRootFolder)QVD\WTA_Data.qvd] (QVD)
+GROUP BY [Loser ID], [Loser Name], [Loser Hand], [Loser Height], [Loser IOC];
+
+DOB_Map:
+MAPPING LOAD @1 as PlayerID,
+     Date(left(@5, 4) & '-' & right(left(@5, 6), 2) & '-' & right(@5, 2), 'YYYY-MM-DD') as [DOB]
+FROM [https://raw.githubusercontent.com/JeffSackmann/tennis_wta/master/wta_players.csv]
+(txt, codepage is 1252, no labels, delimiter is ',', msq);
+
+WTA_PlayerData:
+NoConcatenate
+LOAD
+	*,
+	NUM(Date#([DOB], 'YYYY-MM-DD')) as DOB_NUM
+	;
+LOAD DISTINCT
+	AUTONUMBERHASH128('Women', [Player ID]) as PlayerID_FK,
+	[Player Name],
+	[Player Hand],
+	ApplyMap('DOB_Map', [Player ID], NULL())as [DOB],
+	[Player IOC] as Cty_Player,
+	[Player Height],
+	MIN([Highest Rank]) as [Highest Rank]
+RESIDENT PlayerData_Temp
+GROUP BY [Player ID], [Player Name], [Player Hand], [Player Height], [Player IOC];
+
+DROP TABLE PlayerData_Temp;
+
+WTA_PlayerNamesColumns:
+LOAD
+	 AUTONUMBERHASH128('Women', [Tournament Date], [Tournament ID], Circuit, [Match Number]) as Match_FK,
+     [Winner Name]
+FROM [$(vRootFolder)QVD\WTA_Data.qvd] (QVD);
+
+LEFT JOIN (WTA_PlayerNamesColumns)
+LOAD
+	 AUTONUMBERHASH128('Women', [Tournament Date], [Tournament ID], Circuit, [Match Number]) as Match_FK,
+     [Loser Name]
+FROM [$(vRootFolder)QVD\WTA_Data.qvd] (QVD);
+
+Concatenate(PlayerNamesColumns) LOAD * RESIDENT WTA_PlayerNamesColumns;
+
+DROP TABLE WTA_PlayerNamesColumns;
+
+Concatenate(PlayerData)
+LOAD * RESIDENT WTA_PlayerData;
+
+DROP TABLE WTA_PlayerData;
+///$tab 4f. Data Islands
+TRACE ********************* 4f. Data Island tab *********************;
+
+//Head-to-Head data island used in set analysis
+HeadToHead01_Temp:
+LOAD
+	PlayerID_FK,
+	[Player Name] as [Head-To-Head]
+RESIDENT PlayerData;
+
+INNER JOIN (HeadToHead01_Temp)
+LOAD
+	PlayerID_FK
+RESIDENT MatchData
+WHERE %Tour = 'Men';
+
+DROP FIELD PlayerID_FK FROM HeadToHead01_Temp;
+
+HeadToHead01:
+NoConcatenate
+LOAD DISTINCT * RESIDENT HeadToHead01_Temp;
+
+
+ComparisonPlayer1: LOAD [Head-To-Head] as ComparisonPlayer1 RESIDENT HeadToHead01;
+ComparisonPlayer2: LOAD [Head-To-Head] as ComparisonPlayer2 RESIDENT HeadToHead01;
+
+
+DROP TABLE HeadToHead01_Temp;
+
+HeadToHead02_Temp:
+LOAD
+	PlayerID_FK,
+	[Player Name] as [Head-To-Head_Women]
+RESIDENT PlayerData;
+
+INNER JOIN (HeadToHead02_Temp)
+LOAD
+	PlayerID_FK
+RESIDENT MatchData
+WHERE %Tour = 'Women';
+
+DROP FIELD PlayerID_FK FROM HeadToHead02_Temp;
+
+HeadToHead02:
+NoConcatenate
+LOAD DISTINCT * RESIDENT HeadToHead02_Temp;
+
+ComparisonPlayer1_Women: LOAD [Head-To-Head_Women] as ComparisonPlayer1_Women RESIDENT HeadToHead02;
+ComparisonPlayer2_Women: LOAD [Head-To-Head_Women] as ComparisonPlayer2_Women RESIDENT HeadToHead02;
+
+DROP TABLE HeadToHead02_Temp;
+
+//Tournament Draw Viewer: either full draw or last 16 only.
+[Tournament Draw Viewer]:
+LOAD * INLINE [
+	%Tournament Draw Viewer
+	Full Tournament
+	Round of 16 Onward
+];
+
+
+GuidedAnalytics:
+LOAD * INLINE [
+	FieldName
+	Tour
+	Circuit
+	Draw Size
+	Grand Slams
+	Player Name
+	Player Country
+	Player Rank
+	Player Seed
+	Round in Main Draw
+	Round
+	Winner Name
+	Loser Name
+	Winner Seed
+	Loser Seed
+	Sets Played
+	Tournament Country
+	Tournament Date
+	Tournament Date FK
+	Tournament Grade
+	Tournament Level
+	Tournament Name
+	Tournament Name - Cleaned
+	Tournament Type
+	Surface
+	Player Hand
+	Player Height
+	Score
+	Year
+	YearQuarter
+	MonthYear
+	MonthDisplays
+	Tournament Week
+	Week
+	WeekDay
+	WeekYear
+];
+
+
+ATP_Tour_Series:
+LOAD * INLINE [
+	%ATP_Tour_Series, %TournamentGrade
+	1000 Series, 1000
+	500 Series, 500
+	250 Series, 250
+	Other, Other
+];
+///$tab 4g. Master Calendar
+TRACE ********************* 4g. Master Calendar tab *********************;
+
+MinMax:
+LOAD
+	Max([Tournament Date]) AS MaxDate
+RESIDENT MatchData;
+
+LET varMinDate = Num(MakeDate(1968,1,1));
+LET varMaxDate = Num(Peek('MaxDate',-1,'MinMax'));
+LET varToday = Num(Peek('MaxDate',-1,'MinMax'));
+
+//Quarter map generation
+QuarterMap:
+MAPPING LOAD 
+	rowno() as Month,
+	'Q' & ceil(rowno()/3) as Quarter
+AutoGenerate(12);
+
+//Fiscal month map generation as a mapping load.
+FiscalMonth_Map:
+Mapping LOAD * INLINE [
+    FiscalPeriod, Month
+    1, 7
+    2, 8
+    3, 9
+    4, 10
+    5, 11
+    6, 12
+    7, 1
+    8, 2
+    9, 3
+    10, 4
+    11, 5
+    12, 6
+];
+
+//Fiscal Quarter map generation
+FiscalQuarter_Map:
+Mapping LOAD * INLINE [
+	Quarter, FiscalQuarter
+    Q1, Fin Q3
+    Q2, Fin Q4
+    Q3, Fin Q1
+    Q4, Fin Q2
+];
+
+//MasterCalendar
+//Full master calendar based on [Tournament Date] in QlikView_TXN_DB_TableName table.
+MasterCalendar:
+LOAD
+	[Tournament Date],
+	NUM([Tournament Date]) as TournamentDate_NUM,
+	Day([Tournament Date]) AS Day,
+	WeekDay([Tournament Date]) AS WeekDay,
+	Week([Tournament Date]) AS Week,
+	autonumber(date(WeekStart([Tournament Date]), 'YYYYWW'), 97) as YWNum,
+
+	num(Month([Tournament Date])) AS MonthNum,
+	Month([Tournament Date]) AS MonthDisplays,
+	autonumber(date(monthstart([Tournament Date]), 'YYYYMM'), 98) as YMNum,
+
+	applyMap('QuarterMap', num(month([Tournament Date])),null()) AS Quarter,
+	Year([Tournament Date]) & '-' & applyMap('QuarterMap', num(month([Tournament Date])),null()) AS YearQuarter,
+	autonumber(Year([Tournament Date]) & '-' & applyMap('QuarterMap', num(month([Tournament Date])),null()), 99) AS YQNum,
+
+	Year([Tournament Date]) AS Year,
+
+	Date(monthStart([Tournament Date]), 'MMM-YYYY') AS MonthYear,
+	Week([Tournament Date]) & '-' & Year([Tournament Date]) AS WeekYear,
+	Year2Date([Tournament Date], 0, 1, $(varToday)) * -1 AS CurYTDFlag,
+	Year2Date([Tournament Date], -1, 1, $(varToday)) * -1 AS LastYTDFlag;
+LOAD
+	Date($(varMinDate) + RecNo() - 1) AS [Tournament Date]
+AUTOGENERATE ($(varMaxDate) - $(varMinDate)+1);
+
+DROP TABLE MinMax;
+
+LET vReloadFromQVD =  NUM(Now()) - $(vReloadFromQVD_Start);
+LET vReloadDateTimeQVD = Now();
+///$tab 4h. Player Rank Progression
+TRACE ********************* 4h. Player Rank Progression tab *********************;
+
+TRACE ********************* ATP Player Rank Progression tab *********************;
+
+PlayerProgression:
+LOAD 
+	AUTONUMBERHASH128('Men', NUM(RankingDate), [Player ID]) as PlayerProgression_FK,
+	NUM(RankingDate) as RankingDate_NUM,	
+	Date(RankingDate, 'DD-MMM-YYYY') as RankingDate,
+	Date(RankingDate, 'DD-MMM') as RankingDateDDMMM,
+	ATP_Ranking, 
+	[ATP Player Points] as [Player Ranking Points]
+FROM [$(vRootFolder)DataCopies\Rankings\atp_rankings_*.qvd] (QVD);
+
+TRACE ********************* WTA Player Rank Progression tab *********************;
+
+Concatenate(PlayerProgression)
+LOAD 
+	AUTONUMBERHASH128('Women', NUM(RankingDate), [Player ID]) as PlayerProgression_FK,
+	NUM(RankingDate) as RankingDate_NUM,	
+	Date(RankingDate, 'DD-MMM-YYYY') as RankingDate,
+	Date(RankingDate, 'DD-MMM') as RankingDateDDMMM,
+	WTA_Ranking, 
+	[WTA Player Points] as [Player Ranking Points]
+FROM [$(vRootFolder)DataCopies\Rankings\wta_rankings_*.qvd] (QVD);
+///$tab 4j. Special Stats
+TRACE ********************* 4j. Special Stats tab *********************;
+
+PctGamesWonByWinner_Temp01:
+LOAD
+	*,
+	[Total Games Won] / ([Total Games Won] + [Total Games Lost]) as [Pct Games Won];
+LOAD
+	SpecialStats01_FK,
+	SUM([Count of Games Won]) as [Total Games Won],
+	SUM([Count of Games Lost]) as [Total Games Lost]
+RESIDENT MatchData
+GROUP BY SpecialStats01_FK;
+
+
+PctGamesWonByWinner:
+NoConcatenate
+LOAD
+	*,
+	IF([Pct Games Won] <= 0.1, DUAL('0-10%', 1),
+	IF([Pct Games Won] > 0.1 AND [Pct Games Won] < 0.25, DUAL('10-25%', 2),
+	IF([Pct Games Won] > 0.25 AND [Pct Games Won] < 0.3, DUAL('25-30%', 3),
+	IF([Pct Games Won] > 0.3 AND [Pct Games Won] < 0.35, DUAL('30-35%', 4),
+	IF([Pct Games Won] > 0.35 AND [Pct Games Won] < 0.4, DUAL('35-40%', 5),
+	IF([Pct Games Won] > 0.4 AND [Pct Games Won] < 0.45, DUAL('40-45%', 6),
+	IF([Pct Games Won] > 0.45 AND [Pct Games Won] < 0.5, DUAL('45-50%', 7),
+	IF([Pct Games Won] > 0.5 AND [Pct Games Won] < 0.55, DUAL('50-55%', 8),
+	IF([Pct Games Won] > 0.55 AND [Pct Games Won] < 0.6, DUAL('55-60%', 9),
+	IF([Pct Games Won] > 0.6 AND [Pct Games Won] < 0.65, DUAL('60-65%', 10),
+	IF([Pct Games Won] > 0.65 AND [Pct Games Won] < 0.7, DUAL('65-70%', 11),
+	IF([Pct Games Won] > 0.7 AND [Pct Games Won] < 0.75, DUAL('70-75%', 12),
+	IF([Pct Games Won] > 0.75 AND [Pct Games Won] < 0.8, DUAL('75-80%', 13),
+	IF([Pct Games Won] > 0.8 AND [Pct Games Won] < 0.85, DUAL('80-85%', 14),	
+	IF([Pct Games Won] > 0.85 AND [Pct Games Won] < 0.9, DUAL('95-90%', 15),
+	IF([Pct Games Won] > 0.9 , DUAL('90+%', 16)
+											)))))))))))))))) as [Pct Brackets Winner]
+RESIDENT PctGamesWonByWinner_Temp01;
+
+DROP TABLE PctGamesWonByWinner_Temp01;
+///$tab 4k. Point By Point
+TRACE ********************* 4k. Point by Point tab *********************;
+
+PointByPoint:
+LOAD
+	match_id,
+	%PointByPoint,
+	%MaxKey,
+	ElapsedTime,
+	History,
+	SetNo,
+	PlayerGamesWon,
+	SetWinner,
+	GameNo,
+	GameWinner,
+	PointNumber,
+	PointWinner,
+	PointWon,
+	PointLost,
+	PointServer,
+	Speed_KMH,
+	PlayerScore,
+	PlayerScore_SetGame,
+	PlayerScore_Tiebreak,
+	PlayerMomentum,
+	PlayerPointWon,
+	PlayerAce,
+	PlayerWinner,
+	PlayerDoubleFault,
+	PlayerUnfErr,
+	PlayerNetPoint,
+	PlayerNetPointWon,
+	PlayerBreakPoint,
+	PlayerBreakPointWon,
+	Player1stSrvIn,
+	Player1stSrvWon,
+	Player2ndSrvIn,
+	Player2ndSrvWon,
+	PlayerSuccessfulServe,
+	PlayerForcedError,
+	Speed_MPH,
+	PlayerBreakPointMissed,
+	ServeIndicator,
+	PlayerTurningPoint,
+	ElapsedTime_Previous,
+	ComboScore,
+	PointDuration_NUM,
+	PointDuration_Interval,
+	Serve_Direction,
+	Winner_FH,
+	Winner_BH,
+	ServingTo,
+	ServeNumber,
+	WinnerType,
+	WinnerShotType,
+	PlayerDistanceRun,
+	RallyCount,
+	ServeWidth,
+	ServeDepth,
+	ReturnDepth,
+	ServeSpotCourtSide,
+	PlayerHand,
+	ElaspedTime_NUM,
+	ServeSpotCourtIndictator,
+	PlayerName,
+	[Points_Winner/LoserFlag],
+	[Point by Point]
+FROM [$(vRootFolder)QVD\PointByPoint.qvd] (QVD);
+///$tab 4m. Drop Tables
+//End if of 'Final QVD Build'
+END IF;
+
+TRACE ********************* 4m. Drop Tables tab *********************;
+
+//Set RootFolder to blank if you want to (don't forget to include the "last back-slash" in the path if using an explicit path:
+//SET vRootFolder = 'C:\Users\cheen\Desktop\ATP\v3.1.1\';
+SET vRootFolder = '';
+
+SET HidePrefix = '%';
+
+SET vBoS = 1;
+
+//Front-end default variable values
+SET vQualifierDraw = 0;
+///$tab 5. Tournament Schedule
+TRACE ********************* 5. Tournament Schedule tab *********************;
+
+SET ErrorMode = 0;
+
+IF ALT(Year(QvdCreateTime('$(vRootFolder)QVD\Tournament_Schedule.qvd')), 0) <> Year(NOW()) THEN
+		TournamentSchedule:
+		LOAD 
+			 'Men' as Tour,
+			 Week as [Tournament Week], 
+		     [Start Date] as [Tournament Start Date], 
+		     Type as [Tournament Rank/Type],
+		     Tournament as [Tournament Name_Schedule], 
+		     Surface as [Tournament Surface], 
+		     [Town/City] as [Tournament Town/City], 
+		     Country as [Tournament Country], 
+		     Replace([Prize Money], 'â‚¬', '€') as [Tournament Prize Money]
+		FROM [https://en.wikipedia.org/wiki/List_of_tennis_tournaments]
+		(html, codepage is 1252, embedded labels, table is @2);
+		
+		LOAD 
+			 'Women' as Tour,
+			 Week as [Tournament Week], 
+		     [Start Date] as [Tournament Start Date], 
+		     Type as [Tournament Rank/Type],
+		     Tournament as [Tournament Name_Schedule],
+		     Surface as [Tournament Surface], 
+		     [Town/City] as [Tournament Town/City], 
+		     Country as [Tournament Country], 
+		     Replace([Prize Money], 'â‚¬', '€') as [Tournament Prize Money]
+		FROM [https://en.wikipedia.org/wiki/List_of_tennis_tournaments]
+		(html, codepage is 1252, embedded labels, table is @3);
+		
+		STORE TournamentSchedule INTO $(vRootFolder)QVD\Tournament_Schedule.qvd (QVD);
+		DROP TABLE TournamentSchedule;		
+END IF;
+
+TournamentSchedule: LOAD * FROM $(vRootFolder)QVD\Tournament_Schedule.qvd (QVD);
+
+SET ErrorMode = 1;
+///$tab 6. Expressions in VARs
+TRACE ********************* 6. Expressions in VARs tab *********************;
+
+IF ALT(FileTime('$(vRootFolder)SupportData\Externalised_Expressions.xlsx'), 0) > $(vXLS_Expressions) THEN
+
+		Expr_VARs:
+		LOAD  
+		     VAR_Name, 
+		     Formulaic_Expression,
+		     ExpressionID,
+		     Expression_Name,
+		     [Expression Definition]
+		FROM [$(vRootFolder)SupportData\Externalised_Expressions.xlsx]
+		(ooxml, embedded labels);
+		
+		LET vXLS_Expressions = NUM(FILETIME('$(vRootFolder)SupportData\Externalised_Expressions.xlsx'));
+		
+		
+		FOR i=1 TO NoOfRows('Expr_VARs')
+			LET vExprVAR	= PEEK('VAR_Name', $(i)-1, 'Expr_VARs');
+			LET $(vExprVAR) = PEEK('Formulaic_Expression', $(i)-1, 'Expr_VARs');
+		NEXT i;
+
+END IF;
+///$tab 7. Languages inside UI
+UI_Languages:
+LOAD 
+	Text_ID, 
+	EN, 
+	FR, 
+	DE, 
+	IT, 
+	ES, 
+	RU, 
+	JP, 
+	NL
+FROM
+SupportData\Languages.xlsx
+(ooxml, embedded labels, table is UI_Languages)
+WHERE NOT(ISNULL(Text_ID));
+
+///$tab 8. RSS Articles Feed
+TRACE ********************* 7. RSS Articles Feed tab *********************;
+
+LET vNow = Date(NOW(), 'DD-MMM-YYYY HH:mm:ss');
+
+TRACE ****** Refreshing ATP Articles / RSS Feed at $(vNow) ******;
+
+IF IsPartialReload() = -1 THEN
+		IF ALT(NoOfRows('RSS_Feeds'), 0) > 0 THEN
+			DROP TABLE RSS_Feeds;
+		END IF;
+END IF;
+
+SET ErrorMode = 0;
+
+//ATP RSS Feed
+RSS_Feeds:
+ADD
+LOAD
+	'Men' as RSS_Section,
+	link as URL_Link,
+	DUAL(Replace(title, '&#39;', CHR(39)), pubDate) as Article_Title,
+	Date(Daystart(pubDate), 'DD-MMM-YYYY') as Article_Date,
+	Time(FRAC(pubDate), 'HH:mm') as Article_Time;
+LOAD 
+	link,
+	title,
+    NUM(Date#(Subfield(pubDate, ', ', 2), 'DD MMM YYYY HH:mm:ss Z')) as pubDate
+FROM [http://www.atpworldtour.com/en/media/rss-feed/xml-feed] (XmlSimple, Table is [rss/channel/item]);
+
+//WTA RSS Feed
+Concatenate(RSS_Feeds)
+ADD
+LOAD
+	'Women' as RSS_Section,
+	link as URL_Link,
+	DUAL(Replace(title, '&#39;', CHR(39)), pubDate) as Article_Title,
+	Date(Daystart(pubDate), 'DD-MMM-YYYY') as Article_Date,
+	Time(FRAC(pubDate), 'HH:mm') as Article_Time,
+	pubDate;
+LOAD title,
+    link,
+    NUM(Date#(SubField(Subfield(pubDate, ', ', 2), ' +', 1), 'DD MMM YYYY HH:mm:ss')) as pubDate
+FROM [http://www.wtatennis.com/rss-news.xml] (XmlSimple, Table is [rss/channel/item]);
