@@ -132,7 +132,8 @@ sub MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,pa
 		LOAD
 			[$(parMappingField1)],
 			[$(parMappingField2)]
-		FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD);
+		FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD)
+		WHERE NOT(EXISTS([$(parMappingField1)]));
 		
 		//Then reload into a MAPPING table, 'iff' the mapping table was NOT named as a sub parameter, then when needs to be called for is "parQVDName_Map"
 		[$(vMappingTableName)]:
@@ -148,7 +149,8 @@ sub MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,pa
 		MAPPING LOAD
 				[$(parMappingField1)] as [X1_$(vUniqueIDSuffix)],
 				[$(parMappingField2)] as [X2_$(vUniqueIDSuffix)]
-		FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD);
+		FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD)
+		WHERE NOT(EXISTS([$(parMappingField1)]));
 	END IF;
 end sub;
 
