@@ -1,0 +1,98 @@
+/*
+This is a Master QVS that should always be called for in an Operational QVF.
+It will use the QVF's name (DocumentTitle) to launch the related, same-named ".QVS" file which has been pushed from
+Visual Studio Code (local) to Bitbucket REPO (Bamboo does an XCOPY on-the-fly to the DEV server QVSCRIPTS folder).
+
+In case of conflicting names between the proper (Operational) folders and the DEV/user-folders, the script will prioritise
+the "proper" (Operational) folders.
+If you have issues, please rename the QVS you are trying to load to a "unique"/different name than the one which
+is the Operational folders.
+____________________________________________________________________________________________
+List of Operational folder (which are then sync-ed to PROD server via a JIRA ticket):
+
+____________________________________________________________________________________________
+*/
+
+//Set the path to the QVS/scripts ROOT folder
+SET vFullPathToFolder = 'lib://QVSCRIPTS_QlikSense';
+
+//Get current App name
+AppName:
+LOAD
+	DocumentTitle() as AppName
+AUTOGENERATE(1);
+
+LET vAppName = '*/' & PEEK('AppName', 0, 'AppName') & '.qvs';
+DROP TABLE AppName;
+
+//Generate Folder/Sub-folder routine to check for QVS files inside the QVS folder structure that is set in VAR above
+sub ScanFolder(Root)
+	FOR EACH FileExtension IN 'qvs'
+    	FOR EACH FoundFile IN FILELIST(Root & '/*.' & FileExtension)
+        	QVSNames_Temp:
+            LOAD
+            	'$(FoundFile)' as Full_Path_to_Source_File
+			AUTOGENERATE(1);
+		NEXT FoundFile;
+	NEXT FileExtension;
+
+	FOR EACH SubDirectory IN DIRLIST(Root & '/*')
+    	CALL ScanFolder(SubDirectory)
+	NEXT SubDirectory;
+end sub;
+
+//Call the sub for the ROOT scripts folder set at the top
+CALL ScanFolder('[$(vFullPathToFolder)]');
+
+//Find the filepath to the QVS that corresponds to the current QVF's filename...
+QVSFilePath:
+LOAD Full_Path_to_Source_File as QVSFilePath RESIDENT QVSNames_Temp
+WHERE
+WILDMATCH(Full_Path_to_Source_File, '$(vAppName)')
+	AND
+//...De-prioritise conflicting QVS names which would be in a DEV/user's "sandbox" folder
+WILDMATCH(Full_Path_to_Source_File, '*/_*') = 0;
+
+//Then go and fetch QVS names which are in a DEV/user's "sandbox" folder (as backup)
+LOAD Full_Path_to_Source_File as QVSFilePath RESIDENT QVSNames_Temp
+WHERE
+WILDMATCH(Full_Path_to_Source_File, '$(vAppName)')
+	AND
+WILDMATCH(Full_Path_to_Source_File, '*/_*');
+
+DROP TABLE QVSNames_Temp;
+
+//Insert the path into a VAR
+LET vQVSFilePath = PEEK('QVSFilePath', 0, 'QVSFilePath');
+//Determine whether the app is front-end or back-end (add categorisations of back-end hereunder in WILDMATCH string)
+LET vQVSType = IF(WILDMATCH('$(vQVSFilePath)', '*/extract/*', '*/transform/*', '*/_*') = 0, 'Front', 'Back');
+DROP TABLE QVSFilePath;
+
+//LOAD related format VARs AND subroutine.qvs
+TRACE ******  Loading $(vQVSType)End number and date formats QVS  ******;
+$(Must_Include=$(vFullPathToFolder)/Config/$(vQVSType)EndFormats.qvs);
+
+TRACE ******  Loading sub-routines  ******;
+$(Must_Include=$(vFullPathToFolder)/Shared/SubRoutines.qvs);
+
+//LOAD Colour scheme iff it is a front-end app
+IF '$(vQVSType)' = 'Front' THEN
+	TRACE ******  Loading Solutions Colour Palette in VARs  ******;
+	//Colours --> Corp Colour palette in VARs with naming-convention "c[ColourName]_[Opacity]".
+	$(Must_Include=$(vFullPathToFolder)/Shared/COLOURS_SOLUTIONS.qvs);
+END IF;
+
+LET vScriptStart	= NOW();
+LET vScriptStartNUM	= NUM(NOW());
+
+//LOAD (& EXECUTE) that script
+$(Must_Include=$(vQVSFilePath));
+
+LET vScriptEnd		= NOW();
+LET vScriptEndNUM	= NUM(NOW());
+LET vScriptDuration	= INTERVAL($(vScriptEndNUM) - $(vScriptStartNUM), 'HH:mm:ss');
+
+//Drop all tables if in a production stream
+IF '$(vQVSType)' = 'Back' AND WILDMATCH('$(vQVSFilePath)', '*/_*') = 0 THEN
+	CALL DropAllTables('');
+END IF;
