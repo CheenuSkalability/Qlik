@@ -26,14 +26,13 @@ NOTE --> SET HERE the file extension of the Excel source file you are using XLSM
 SET vExcelFileExtension = 'xlsm';
 //SET vExcelFileExtension = 'xlsx';
 
-
+//Pulling in number formats to apply them as per spreadsheet setup.
 NumFormat_Map:
 MAPPING
 LOAD * FROM
 [$(vDir_ReferenceFile)Excel_Style_Table_Format_Framework.$(vExcelFileExtension)]
 (ooxml, embedded labels, table is "Number_Format_Map")
 WHERE LEN(NumFormat) > 0;
-
 
 ExcelFormatTableBuild:
 LOAD
@@ -143,8 +142,6 @@ NEXT i;
 // Drop
 DROP TABLE VarExp;
 
-TRACE 
-;
 TRACE **** 
 Concept written and developed by Cheenu Janakiram with the kind help of Janusz Twardziak
 ****;
