@@ -13,6 +13,7 @@ TRACE *** INCLUDE: $(vScriptPath)SubRoutines.qvs *** ;
 	9)	DistinctFieldValues(parField)
 	10)	DatesToBeFilled(parDateFieldRequiringFill,parDESC_or_ASC_Date_Ordering)
 	11) QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
+	12) CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
 	999) QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
 
 	*/
@@ -646,6 +647,95 @@ sub QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDate
 
     DROP TABLE [$(parTableNameNEEDToNameAsTargetQVDs)];
     DROP TABLE DistinctFieldValues;
+end sub;
+
+
+// 12) CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
+/*<------ SUB: Create all derivations of date/time from a date field ------>*/
+/*
+EXAMPLE of sub's CALL statement:
+CALL CreateDates('BusinessInvoices','StartDate|EndDate','MM/DD/YYYY');
+_______________________
+Rationale:
+_______________________
+This sub creates a whole set of date derivations based on a date field and format.
+Useful for extract scripts to immediately breakdown a complex date/time stamp into usable components.
+N.B. ORIGINAL FIELD WILL BE DROPPED!!!!
+
+sub-routine parameters:
+parTargetTableName					--> Table name in the Qlik script containing Date/Time stamp.
+parDateFieldNames_PIPE_Delimited	--> PIPE-delimit the Date/Time fields you want to convert.
+parDateFormat						--> Give the date format so that it can be used in DATE#() function.
+
+Author:	Cheenu Janakiram
+Date:	23 January 2021
+*/
+sub CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
+	//Support table with Date/Time field names to LOOP through
+	DateFieldsInTable:
+	LOAD
+		SUBFIELD('$(parDateFieldNames_PIPE_Delimited)', '|') as DateFieldsInTable
+	AUTOGENERATE(1);
+
+	//Quarter map generation
+	QuarterMap:
+	MAPPING LOAD 
+    	rowno() as Month,
+    	'Q' & ceil(rowno()/3) as Quarter
+	AUTOGENERATE(12);    
+
+	//LOOP through all Date/Time fields stated
+	FOR i=1 TO NoofRows('DateFieldsInTable')
+		LET vDateFieldsInTable =  PEEK('DateFieldsInTable', $(i)-1, 'DateFieldsInTable');
+		//Set Time fields if they are present in DATE# format that is given.        
+        IF WILDMATCH('$(parDateFormat)', '*h*') <> 0 THEN
+            LET vTimeFields = 'DATE([$(vDateFieldsInTable)],' & CHR(39) & 'HH:mm:ss' & CHR(39) & ') AS [$(vDateFieldsInTable)_Time], HOUR([$(vDateFieldsInTable)]) AS [$(vDateFieldsInTable)_Hour],';
+        ELSE
+            SET vTimeFields = '';
+        END IF;
+        
+		//Convert date to number
+		DistinctDates:
+        LOAD DISTINCT
+        	NUM([$(vDateFieldsInTable)]) as [$(vDateFieldsInTable)]
+		RESIDENT [$(parTargetTableName)];
+
+		LEFT JOIN([$(parTargetTableName)])
+		LOAD
+        	//Time fields below if necessary
+        	$(vTimeFields)
+			//Day and Week fields
+			[$(vDateFieldsInTable)],
+			DATE(DAYSTART([$(vDateFieldsInTable)]), 'YYYY-MM-DD')					AS [$(vDateFieldsInTable)_Date],
+			NUM(DAYSTART([$(vDateFieldsInTable)]))									AS [$(vDateFieldsInTable)_DateNUM],
+			DAY(DAYSTART([$(vDateFieldsInTable)]))									AS [$(vDateFieldsInTable)_Day],
+			WEEKDAY(DAYSTART([$(vDateFieldsInTable)]))								AS [$(vDateFieldsInTable)_WeekDay],
+			WEEK([$(vDateFieldsInTable)])											AS [$(vDateFieldsInTable)_Week],
+			WEEK([$(vDateFieldsInTable)]) & '-' & YEAR([$(vDateFieldsInTable)])		AS [$(vDateFieldsInTable)_WeekYear],
+			YEAR([$(vDateFieldsInTable)]) * 100 + WEEK([$(vDateFieldsInTable)])		AS [$(vDateFieldsInTable)_YearWeekNUM],
+
+			//Month fields
+			NUM(MONTH(MONTHSTART([$(vDateFieldsInTable)])))							AS [$(vDateFieldsInTable)_MonthNUM],
+			MONTH(MONTHSTART(([$(vDateFieldsInTable)])))							AS [$(vDateFieldsInTable)_Month],
+			DATE(MONTHSTART([$(vDateFieldsInTable)]), 'YYYYMM')						AS [$(vDateFieldsInTable)_YYYYMM],
+			Date(MONTHSTART([$(vDateFieldsInTable)]), 'MMM-YYYY')					AS [$(vDateFieldsInTable)_MonthYear],
+			YEAR([$(vDateFieldsInTable)]) * 100 + NUM(MONTH(MONTHSTART([$(vDateFieldsInTable)]))) AS [$(vDateFieldsInTable)_YearMonthNUM],
+
+			//Quarter fields
+			ApplyMap('QuarterMap', NUM(MONTH([$(vDateFieldsInTable)])), NULL())		AS [$(vDateFieldsInTable)_Quarter],
+			ApplyMap('QuarterMap', NUM(MONTH([$(vDateFieldsInTable)])), NULL()) & '-' & YEAR([$(vDateFieldsInTable)]) AS [$(vDateFieldsInTable)_QuarterYear],
+			YEAR([$(vDateFieldsInTable)]) * 100 + PURGECHAR(ApplyMap('QuarterMap', NUM(MONTH([$(vDateFieldsInTable)])), NULL()), 'Q') AS [$(vDateFieldsInTable)_YearQuarterNUM],
+
+			//Year fields
+			YEAR([$(vDateFieldsInTable)]) 											AS [$(vDateFieldsInTable)_Year]
+		RESIDENT DistinctDates;
+
+		DROP TABLE DistinctDates;
+        //Drop original field and RENAME the conversion to the original name
+        DROP FIELD [$(vDateFieldsInTable)] FROM [$(parTargetTableName)];
+        RENAME FIELD [$(vDateFieldsInTable)_Date] TO [$(vDateFieldsInTable)];
+	NEXT i;
+	DROP TABLE DateFieldsInTable;
 end sub;
 
 
