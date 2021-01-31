@@ -12,8 +12,8 @@ TRACE *** INCLUDE: $(vScriptPath)SubRoutines.qvs *** ;
 	8)	QVDFileNamesLoad(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles,parOPTIONALsubName)
 	9)	DistinctFieldValues(parField)
 	10)	DatesToBeFilled(parDateFieldRequiringFill,parDESC_or_ASC_Date_Ordering)
-	11) QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
-	12) CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
+	11)	QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
+	12)	CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
 	999) QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
 
 	*/
