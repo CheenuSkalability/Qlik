@@ -1,0 +1,149 @@
+/*
+USAGE NOTE:
+PLEASE EDIT THIS SCRIPT FILE IF YOU NEED TO ADD MORE THAN 11 COLUMNS TO THE "Excel_Style_Table_Format_Framework.xlsx".
+You need to add 2 lines to the script per added column in the spreadsheet:
+1. One in the "Expression or figure in the cells" section below and
+2. One in the "Number format for the cells" section below.
+
+Special thanks to Janusz Twardziak for his thoughts, help and code-sharing.
+
+*********** Front-end variables: ***********
+    1. --> For the expression, in columns use "$(vExcelStyleColumn(A,B,C))",
+    2. --> For the cell background, in columns use "$(vExcelCellBackground(A,B,C))"
+    3. --> For the text colours, $(vExcelTextColour(A,B,C))"
+where
+    A = expression column in Excel spreadsheet "Excel_Style_Table_Format_Framework".
+    B = the "Measure_Group_ID" and
+    C = the "Measure_ID" if you want to refer to a single cell (as a KPI),
+        otherwise use "*" to show how column in a table.
+*/
+
+/*
+*********                   IMPORTANT NOTE!!!               *********
+*********    ------>    WHICH EXCEL ARE YOU USING?  <------ *********
+NOTE --> SET HERE the file extension of the Excel source file you are using XLSM or XLSX.
+*/
+SET vExcelFileExtension = 'xlsm';
+//SET vExcelFileExtension = 'xlsx';
+
+
+NumFormat_Map:
+MAPPING
+LOAD * FROM
+[$(vDir_ReferenceFile)Excel_Style_Table_Format_Framework.$(vExcelFileExtension)] (ooxml, embedded labels, table is "Number_Format_Map")
+WHERE LEN(NumFormat) > 0;
+
+
+ExcelFormatTableBuild:
+LOAD
+    //Table and reference info
+    Table_Name,
+    Table_ID,
+    Measure_Name,
+    Measure_ID,
+
+    //Expression or figure in the cells
+    IF(ISNULL(Expr01), NULL(), 'NUM((' & Expr01 & ApplyMap('NumFormat_Map', Expr01_NumFormat)) as Expr01,
+    IF(ISNULL(Expr02), NULL(), 'NUM((' & Expr02 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr02_NumFormat), Expr01_NumFormat, Expr02_NumFormat))) as Expr02,
+ 	IF(ISNULL(Expr03), NULL(), 'NUM((' & Expr03 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr03_NumFormat), Expr01_NumFormat, Expr03_NumFormat))) as Expr03,
+    IF(ISNULL(Expr04), NULL(), 'NUM((' & Expr04 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr04_NumFormat), Expr01_NumFormat, Expr04_NumFormat))) as Expr04,
+    IF(ISNULL(Expr05), NULL(), 'NUM((' & Expr05 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr05_NumFormat), Expr01_NumFormat, Expr05_NumFormat))) as Expr05,
+    IF(ISNULL(Expr06), NULL(), 'NUM((' & Expr06 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr06_NumFormat), Expr01_NumFormat, Expr06_NumFormat))) as Expr06,
+    IF(ISNULL(Expr07), NULL(), 'NUM((' & Expr07 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr07_NumFormat), Expr01_NumFormat, Expr07_NumFormat))) as Expr07,
+    IF(ISNULL(Expr08), NULL(), 'NUM((' & Expr08 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr08_NumFormat), Expr01_NumFormat, Expr08_NumFormat))) as Expr08,
+    IF(ISNULL(Expr09), NULL(), 'NUM((' & Expr09 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr09_NumFormat), Expr01_NumFormat, Expr09_NumFormat))) as Expr09,
+    IF(ISNULL(Expr10), NULL(), 'NUM((' & Expr10 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr10_NumFormat), Expr01_NumFormat, Expr10_NumFormat))) as Expr10,
+    IF(ISNULL(Expr11), NULL(), 'NUM((' & Expr11 & ApplyMap('NumFormat_Map', IF(ISNULL(Expr11_NumFormat), Expr01_NumFormat, Expr11_NumFormat))) as Expr11,
+
+    //Number format for the cells
+    Expr01_NumFormat,
+    IF(ISNULL(Expr02_NumFormat), Expr01_NumFormat, Expr02_NumFormat) as Expr02_NumFormat,
+    IF(ISNULL(Expr03_NumFormat), Expr01_NumFormat, Expr03_NumFormat) as Expr03_NumFormat,
+    IF(ISNULL(Expr04_NumFormat), Expr01_NumFormat, Expr04_NumFormat) as Expr04_NumFormat,
+    IF(ISNULL(Expr05_NumFormat), Expr01_NumFormat, Expr05_NumFormat) as Expr05_NumFormat,
+    IF(ISNULL(Expr06_NumFormat), Expr01_NumFormat, Expr06_NumFormat) as Expr06_NumFormat,
+    IF(ISNULL(Expr07_NumFormat), Expr01_NumFormat, Expr07_NumFormat) as Expr07_NumFormat,
+    IF(ISNULL(Expr08_NumFormat), Expr01_NumFormat, Expr08_NumFormat) as Expr08_NumFormat,
+    IF(ISNULL(Expr09_NumFormat), Expr01_NumFormat, Expr09_NumFormat) as Expr09_NumFormat,
+    IF(ISNULL(Expr10_NumFormat), Expr01_NumFormat, Expr10_NumFormat) as Expr10_NumFormat,
+    IF(ISNULL(Expr11_NumFormat), Expr01_NumFormat, Expr11_NumFormat) as Expr11_NumFormat,
+
+
+     //Backround colour for the dimension cells
+     //Text colour for the dimension cells
+    IF(ISNULL(Expr00_CellBackground), WHITE(), Expr00_CellBackground) as Expr00_CellBackground,
+
+     //Backround colour for the cells
+    Expr01_CellBackground,
+    Expr02_CellBackground,
+    Expr03_CellBackground,
+    Expr04_CellBackground,
+    Expr05_CellBackground,
+    Expr06_CellBackground,
+    Expr07_CellBackground,
+    Expr08_CellBackground,
+    Expr09_CellBackground,
+    Expr10_CellBackground,
+    Expr11_CellBackground,
+
+     //Text colour for the dimension cells
+    IF(ISNULL(Expr00_TextColour), RGB(89,89,89), Expr00_TextColour) as Expr00_TextColour,
+
+     //Text colour in the cells
+    Expr01_TextColour,
+    Expr02_TextColour,
+    Expr03_TextColour,
+    Expr04_TextColour,
+    Expr05_TextColour,
+    Expr06_TextColour,
+    Expr07_TextColour,
+    Expr08_TextColour,
+    Expr09_TextColour,
+    Expr10_TextColour,
+    Expr11_TextColour
+    // Add fields if you add a new set of reference columns in the Excel
+FROM [$(vDir_ReferenceFile)Excel_Style_Table_Format_Framework.$(vExcelFileExtension)]
+(ooxml, embedded labels, table is Qlik_Data_Load)
+WHERE LEN(Table_ID) > 0;
+
+/*
+The following creates front-end VARs to be used in Tables or KPIs.
+
+This portion of script was kindly borrowed from Janusz Twardziak, including the front-end
+variable that has been written by him for this purpose.
+*/
+VarExp:
+LOAD
+    "Variable Name"				as var_name,
+    "Variable Definition"		as var_value
+FROM [$(vDir_ReferenceFile)Excel_Style_Table_Format_Framework.$(vExcelFileExtension)]
+(ooxml, embedded labels, table is FrontEnd_Variable)
+Where
+	( Len("Variable Name") > 0 )
+    and ( Len("Variable Definition") > 0 )
+;
+
+// Loop through all variable definitions and create them
+For i = 0 to ( NoOfRows('VarExp') - 1)
+
+	Let vVarName = Text(Peek('var_name',$(i),'VarExp'));
+    Let vVarValue = Text(Peek('var_value',$(i),'VarExp'));
+    Let vVarRunDuringReload = Upper(Peek('var_run_during_reload',$(i),'VarExp'));
+    
+    If( vVarRunDuringReload = 'YES' ) Then
+    	Trace Variable $(vVarName) is being interpreted during reload;
+    	Let $(vVarName) = $(vVarValue);
+    Else
+    	Let $(vVarName) = Peek('var_value',$(i),'VarExp');
+    EndIf
+
+Next i;
+
+// Drop
+Drop Table VarExp;
+
+TRACE 
+;
+TRACE **** 
+Concept written and developed by Cheenu Janakiram with the kind help of Janusz Twardziak
+****;

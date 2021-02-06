@@ -1,0 +1,123 @@
+Sub StoreKeep(parTable,parPath)
+
+	Store $(parTable) into $(parPath) (qvd);
+
+End Sub
+
+Sub StoreDrop(parTable,parPath)
+
+	Store $(parTable) into $(parPath) (qvd);
+	Drop Table $(parTable);
+
+End Sub
+
+Sub FileExists(parFilePath)
+
+	If ( Alt(FileSize(parFilePath),0) > 0 ) Then
+		Trace $(parFilePath) already exists;
+		Let vFileExists = 1;
+	Else 
+		Trace $(parFilePath) does not exist;
+		Let vFileExists = 0;
+	EndIf
+	
+End Sub
+
+// Load Variables and Expressions
+Sub LoadVariableExpression(parFileFullName)
+
+	// Variables 
+	VarExp:
+	LOAD
+		"Variable Name"				as var_name,
+		"Variable Definition"		as var_value,
+		"Run During Reload"			as var_run_during_reload
+	FROM [$(parFileFullName)]
+	(ooxml, embedded labels, table is Variable)
+	Where
+		( Len("Variable Name") > 0 )
+		and ( Len("Variable Definition") > 0 )
+	;
+
+	// Expressions
+	Concatenate (VarExp)
+	LOAD
+		"Expression Name"			as var_name,
+		"Expression Definition"		as var_value
+	FROM [$(parFileFullName)]	
+	(ooxml, embedded labels, table is Expression)
+	Where
+		( Len("Expression Name") > 0 )
+		and ( Len("Expression Definition") > 0 )
+	;
+
+	// Loop through all variable definitions and create them
+	For i = 0 to ( NoOfRows('VarExp') - 1)
+
+		Let vVarName = Text(Peek('var_name',$(i),'VarExp'));
+		Let vVarValue = Text(Peek('var_value',$(i),'VarExp'));
+		Let vVarRunDuringReload = Upper(Peek('var_run_during_reload',$(i),'VarExp'));
+		
+		If( vVarRunDuringReload = 'YES' ) Then
+			Trace Variable $(vVarName) is being interpreted during reload;
+			Let $(vVarName) = $(vVarValue);
+		Else
+			Let $(vVarName) = Peek('var_value',$(i),'VarExp');
+		EndIf
+
+	Next i;
+
+	// Drop
+	Drop Table VarExp;
+
+End Sub
+
+/*
+For a "folder name" and a "file name prefix" with a "file name suffix" of [YYYYMMDD] as
+(i.e. "parSubFolder_FileName"), this sub will check file names for a given file determined file extension
+(i.e. "parFileExt") and will fetch the file name for the latest YYYYMMDD to be loaded in the script. The Qlik
+"load" statement will need to point to "FROM [$(vLoadFile)]" with the appropriate file encoding parameters for
+that file type.
+
+For example, a folder named "Archive" with files named "Archive_20200218.csv", "Archive_20200219.csv",
+"Archive_20200220.csv", it will load "Archive_20200220.csv". When a ""Archive_20200221.csv" will be created,
+it will load this one, etc. etc.
+In the Qlik script, do a "CALL LoadLastFileInFolder('csv','Archive');" and build the load statement with
+.... FROM [$(vLoadFile)] (txt, codepage is ...., embedded labels, delimiter....);".
+
+N.B. Preferably use underscore ("_") rather than space (" ") in the folder- and file-naming convention.
+*/
+
+Sub LoadLastFileInFolder(parFileExt,parSubFolder_FileName)
+
+IF ALT(NoofRows('DataLoadedFromFiles'), 0) = 0 THEN
+	DataLoadedFromFiles:
+	LOAD * INLINE [
+		DateTime, FileName
+	];
+END IF;
+
+	FOR EACH file in FileList('$(vDir_SourceFile)/$(parSubFolder_FileName)/$(parSubFolder_FileName)_*.$(parFileExt)')
+		[FilePaths_$(parSubFolder_FileName)]:
+		LOAD
+			SUBFIELD(SUBFIELD(SUBFIELD('$(file)', '.$(parFileExt)', 1), '/', SUBSTRINGCOUNT('$(file)', '/')+1), '$(parSubFolder_FileName)_', 2) as [DateTime_$(parSubFolder_FileName)],
+			'$(file)' as FilePaths_$(parSubFolder_FileName)
+		AUTOGENERATE(1);
+	NEXT file;
+
+	INNER JOIN([FilePaths_$(parSubFolder_FileName)])
+	LOAD MAXSTRING([DateTime_$(parSubFolder_FileName)]) as [DateTime_$(parSubFolder_FileName)] RESIDENT [FilePaths_$(parSubFolder_FileName)];
+
+	CONCATENATE(DataLoadedFromFiles)
+	LOAD
+		[DateTime_$(parSubFolder_FileName)] as DateTime,
+		[FilePaths_$(parSubFolder_FileName)] as FileName
+	RESIDENT [FilePaths_$(parSubFolder_FileName)]; 
+
+	LET vLoadFile = PEEK('FilePaths_$(parSubFolder_FileName)', 0, 'FilePaths_$(parSubFolder_FileName)');
+	DROP TABLE [FilePaths_$(parSubFolder_FileName)];
+	LET vLoadFile_Date = SUBFIELD(SUBFIELD('$(vLoadFile)', '_', SUBSTRINGCOUNT('$(vLoadFile)', '_')+1), '.xlsx');
+
+	TRACE **** Loading $(parSubFolder_FileName) using file $(vLoadFile) ****;
+
+End Sub

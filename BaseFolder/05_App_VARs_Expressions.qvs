@@ -1,0 +1,51 @@
+//-------------------------------------------------------
+// Application Variables/Expressions
+//
+// Read Variables and Expressions var definitions
+//-------------------------------------------------------
+
+Trace;
+Trace --> App Variable/Expression;
+
+// Variables 
+VarExp:
+LOAD
+    "Variable Name"				as var_name,
+    "Variable Definition"		as var_value
+FROM [$(vDir_ReferenceFile)Variable_Expression.xlsx]
+(ooxml, embedded labels, table is Variable)
+Where
+	( Len("Variable Name") > 0 )
+    and ( Len("Variable Definition") > 0 )
+;
+
+// Expressions
+Concatenate (VarExp)
+LOAD
+    "Expression Name"			as var_name,
+    "Expression Definition"		as var_value
+FROM [$(vDir_ReferenceFile)Variable_Expression.xlsx]
+(ooxml, embedded labels, table is Expression)
+Where
+	( Len("Expression Name") > 0 )
+    and ( Len("Expression Definition") > 0 )
+;
+
+// Loop through all variable definitions and create them
+For i = 0 to ( NoOfRows('VarExp') - 1)
+
+	Let vVarName = Text(Peek('var_name',$(i),'VarExp'));
+    Let vVarValue = Text(Peek('var_value',$(i),'VarExp'));
+    Let vVarRunDuringReload = Upper(Peek('var_run_during_reload',$(i),'VarExp'));
+    
+    If( vVarRunDuringReload = 'YES' ) Then
+    	Trace Variable $(vVarName) is being interpreted during reload;
+    	Let $(vVarName) = $(vVarValue);
+    Else
+    	Let $(vVarName) = Peek('var_value',$(i),'VarExp');
+    EndIf
+
+Next i;
+
+// Drop
+Drop Table VarExp;

@@ -1,0 +1,13 @@
+//If the "Default Qlik App.qvf" is used, the following "vDir_Root" is named there.
+//Set vDir_Root = 'lib://Project_Root/ProjectName/';
+
+Let vDir_QVD = vDir_Root & 'QVD\';
+//Let vDir_QVD1 = vDir_Root & 'QVD/QVD1/'; // Uncomment in case of the multi-stage ETL scenario
+//Let vDir_QVD2 = vDir_Root & 'QVD/QVD2/'; // Uncomment in case of the multi-stage ETL scenario
+//Let vDir_QVD3 = vDir_Root & 'QVD/QVD3/'; // Uncomment in case of the multi-stage ETL scenario
+
+Let vDir_ReferenceFile = vDir_Root & 'Reference File/';
+
+Let vDir_SourceFile = vDir_Root & 'Source File/';
+
+Let vDir_Script = vDir_Root & 'Script/';

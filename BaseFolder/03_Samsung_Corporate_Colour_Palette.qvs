@@ -1,0 +1,126 @@
+/*
+Samsung Corporate RGB Colours in Variables
+From \\EU-SEUKBIQLIK02\_qlik_platform\02 Documentation\Samsung Brand.pdf,
+pages 54 & 58
+*/
+LET cBlack100 = RGB(0,0,0);
+LET cWhite = RGB(255,255,255);
+
+LET cGray1 = RGB(46,44,43);
+LET cGray2 = RGB(110,106,105);
+LET cGray3 = RGB(215,210,203);
+LET cGray4 = RGB(247,243,240);
+
+LET cSamsungBlue100 = RGB(20,40,160);
+LET cSamsungBlue75 = RGB(79,94,184);
+LET cSamsungBlue55 = RGB(126,137,203);
+LET cSamsungBlue40 = RGB(161,169,217);
+LET cSamsungBlue25 = RGB(197,202,232);
+
+/*
+Samsung Secondary Palette. Number behind the variable name
+is % Opacity to increase the number of potential colours.
+From \\EU-SEUKBIQLIK02\_qlik_platform\02 Documentation\Samsung Brand.pdf,
+page 56
+*/
+LET cSkyBlue100 = RGB(0,119,200);
+LET cSkyBlue75 = RGB(64,153,214);
+LET cSkyBlue55 = RGB(115,180,225);
+LET cSkyBlue40 = RGB(153,201,233);
+LET cSkyBlue25 = RGB(192,221,241);
+
+LET cClover100 = RGB(151,214,82);
+LET cClover75 = RGB(177,224,125);
+LET cClover55 = RGB(198,232,160);
+LET cClover40 = RGB(213,239,186);
+LET cClover25 = RGB(229,245,212);
+
+LET cSeaBlue100 = RGB(0,179,227);
+LET cSeaBlue75 = RGB(64,198,234);
+LET cSeaBlue55 = RGB(115,213,240);
+LET cSeaBlue40 = RGB(153,225,244);
+LET cSeaBlue25 = RGB(192,236,248);
+
+LET cSaffron100 = RGB(255,181,70);
+LET cSaffron75 = RGB(255,200,116);
+LET cSaffron55 = RGB(255,214,153);
+LET cSaffron40 = RGB(255,225,181);
+LET cSaffron25 = RGB(255,237,209);
+
+LET cTeal100 = RGB(0,195,178);
+LET cTeal75 = RGB(64,210,197);
+LET cTeal55 = RGB(115,222,213);
+LET cTeal40 = RGB(153,231,224);
+LET cTeal25 = RGB(192,240,236);
+
+LET cCoral100 = RGB(255,67,55);
+LET cCoral75 = RGB(255,114,105);
+LET cCoral55 = RGB(255,152,145);
+LET cCoral40 = RGB(255,180,175);
+LET cCoral25 = RGB(255,209,206);
+
+/*
+Samsung Extended Secondary Palette. Number behind the variable name
+is % Opacity to increase the number of potential colours.
+From https://htmlcolors.com/brand-color/samsung
+*/
+
+LET c2_Blue100 = RGB(6,137,216);
+LET c2_Blue75 = RGB(68,167,226);
+LET c2_Blue55 = RGB(118,190,234);
+LET c2_Blue40 = RGB(155,208,239);
+LET c2_Blue25 = RGB(193,226,245);
+
+LET c2_Yellow100 = RGB(255,198,0);
+LET c2_Yellow75 = RGB(255,212,64);
+LET c2_Yellow55 = RGB(255,224,115);
+LET c2_Yellow40 = RGB(255,232,153);
+LET c2_Yellow25 = RGB(255,241,192);
+
+LET c2Green100 = RGB(0,177,64);
+LET c2Green75 = RGB(64,197,112);
+LET c2Green55 = RGB(115,212,150);
+LET c2Green40 = RGB(153,224,179);
+LET c2Green25 = RGB(192,236,208);
+
+LET c2Lavender100 = RGB(104,91,199);
+LET c2Lavender75 = RGB(142,132,213);
+LET c2Lavender55 = RGB(172,165,224);
+LET c2Lavender40 = RGB(195,189,233);
+LET c2Lavender25 = RGB(218,214,241);
+
+LET c2LightBlue100 = RGB(0,169,224);
+LET c2LightBlue75 = RGB(64,191,232);
+LET c2LightBlue55 = RGB(115,208,238);
+LET c2LightBlue40 = RGB(153,221,243);
+LET c2LightBlue25 = RGB(192,234,247);
+
+LET c2OceanBlue100 = RGB(0,87,184);
+LET c2OceanBlue75 = RGB(64,129,202);
+LET c2OceanBlue55 = RGB(115,163,216);
+LET c2OceanBlue40 = RGB(153,188,227);
+LET c2OceanBlue25 = RGB(192,213,237);
+
+LET c2Orange100 = RGB(255,105,0);
+LET c2Orange75 = RGB(255,143,64);
+LET c2Orange55 = RGB(255,173,115);
+LET c2Orange40 = RGB(255,195,153);
+LET c2Orange25 = RGB(255,218,192);
+
+LET c2Purple100 = RGB(200,0,161);
+LET c2Purple75 = RGB(214,64,185);
+LET c2Purple55 = RGB(225,115,203);
+LET c2Purple40 = RGB(233,153,217);
+LET c2Purple25 = RGB(241,192,232);
+
+LET c2Red100 = RGB(228,0,43);
+LET c2Red75 = RGB(235,64,96);
+LET c2Red55 = RGB(240,115,139);
+LET c2Red40 = RGB(244,153,170);
+LET c2Red25 = RGB(248,192,203);
+
+LET c2Teal100 = RGB(0,156,166);
+LET c2Teal75 = RGB(64,181,188);
+LET c2Teal55 = RGB(115,201,206);
+LET c2Teal40 = RGB(153,215,219);
+LET c2Teal25 = RGB(192,231,233);
