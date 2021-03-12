@@ -1,0 +1,331 @@
+///$tab Main
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='£#,##0.00;-£#,##0.00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD/MM/YYYY';
+SET TimestampFormat='DD/MM/YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=0;
+SET BrokenWeeks=0;
+SET ReferenceDay=4;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-GB';
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+
+//Current Provision for Corporate Tax as per Xero dashboard:
+LET vCorpTaxProvision = NUM(19052.31);
+
+LastXeroBalance:
+FIRST 1
+LOAD [Balance Calculate] as LastXeroBalance
+FROM [Transaction Accounts.xlsx]
+(ooxml, embedded labels);
+
+LET vLastXeroBalance = PEEK('LastXeroBalance', 0, 'LastXeroBalance');
+DROP TABLE LastXeroBalance;
+///$tab Colours
+/*
+ARGB are translucent colours and therefore each ARGB needs to be converted to a solid RBG to use them in Qlik objects.
+
+The below script requires editing:
+	(i)		the "Opacity_Alpha" table to insert the colour percentages you want to generate for your colour palette;
+	(ii)	the "RGB_Base" table to insert all the base colour from which you want to create an array of colour for each level (percentage) of opacity.
+	N.B. To edit tables below with the "Inline Data Wizard":
+		(i) 	comment out the "[Table Name]";
+		(ii) 	place cursor somewhere in "LOAD * INLINE" statement;
+		(iii) 	keyboard shortcuts "CTRL+E" (use copy/paste function, if desired); and
+		(iv) 	uncomment "[Table Name]" before reload script.
+
+Below is the Equation/algorithm to convert ARGB to a (solid) RGB:
+{[255-Base_RGB_Colour] * [1-(Alpha/255)] + Base_RGB_Colour},
+where Alpha = [(Opacity % - as a decimal) * 255]
+*/
+
+
+//	1.	Load your base colours in RGB ("RGB_Base" table) and the colour name (which will be converted to a variable "v[ColourName]_[Opacity]" for usage in the front-end).
+RGB_Base:
+LOAD * INLINE [
+    ColourName, R, G, B
+    Violet, 155, 37, 131
+    Yellow, 253, 159, 19
+    Blue, 40, 149, 213
+    HotPink, 230, 75, 162
+    Lavender, 112, 83, 170
+    Turquoise, 52, 188, 186
+    Orange, 230, 118, 0
+    Red, 222, 32, 49
+    Green, 109, 175, 61
+];
+
+/*
+    Grey, 119, 119, 119
+    Navy, 19, 71, 148
+    Olive, 132, 119, 17
+    Pink, 223, 56, 131
+    Brown, 121, 74, 0
+    Lime, 111, 175, 0
+    Green, 44, 144, 0
+    Teal, 42, 110, 112
+    Blue, 0, 102, 255
+    Sky, 0, 164, 217
+    Indigo, 100, 74, 174
+    Purple, 171, 47, 142
+    Red, 212, 8, 4
+    Orange, 224, 145, 8
+    Yellow, 250, 214, 59
+*/
+
+//	2.	Set "Percent Opacities" you want to create in your Colour Palette ("Opacity_Alpha" table):
+Opacity_Alpha:
+LOAD * INLINE [
+    %_Opacity_Alpha
+    100
+    75
+    55
+    40
+    25
+];
+
+
+
+FOR vOpacity = 1 TO NoOfRows('Opacity_Alpha')
+
+	LET vOpacity_Alpha = FLOOR((PEEK('%_Opacity_Alpha', vOpacity-1, 'Opacity_Alpha') / 100) * 255);
+	LET vOpacity% = PEEK('%_Opacity_Alpha', vOpacity-1, 'Opacity_Alpha');
+
+
+FinalCodes_ColourScheme:
+//SOLIDS COLOURS
+LOAD
+	'RGB' as Colour_Scheme,
+	Colour_Variable,
+	ColourCode,
+	'LET ' & Colour_Variable & ' = ' & ColourCode & ';' as FullVariableScriptLine;
+LOAD
+	*,
+	RGB(Converted_R_SolidColour, Converted_G_SolidColour, Converted_B_SolidColour) as ColourCode;
+LOAD
+	'v' & ColourName & $(vOpacity%) as Colour_Variable,
+	$(vOpacity_Alpha) as [Opacity - Alpha],
+	$(vOpacity%) as Opacity%,
+	ROUND(((255 - R) * (1 - ($(vOpacity_Alpha)/255))) + R) as Converted_R_SolidColour,
+	ROUND(((255 - G) * (1 - ($(vOpacity_Alpha)/255))) + G) as Converted_G_SolidColour,
+	ROUND(((255 - B) * (1 - ($(vOpacity_Alpha)/255))) + B) as Converted_B_SolidColour
+RESIDENT RGB_Base;
+
+
+//ARGB (TRANSLUCENT) COLOURS
+Concatenate(FinalCodes_ColourScheme)
+LOAD
+	'ARGB' as Colour_Scheme,
+	'v' & ColourName & $(vOpacity%) & '_ARGB' as Colour_Variable,
+	ARGB($(vOpacity_Alpha), R, G, B ) as ColourCode,
+	'LET v' & ColourName & $(vOpacity%) & 'ARGB = ARGB(' & $(vOpacity_Alpha) & ',' & R & ',' & G & ',' & B & ');' as FullVariableScriptLine
+RESIDENT RGB_Base;
+
+
+NEXT vOpacity;
+
+DROP TABLE Opacity_Alpha;
+DROP TABLE RGB_Base;
+
+//Load/concatenate all VARs (script line) into a table
+AllColourVARs:
+LOAD Concat(FullVariableScriptLine) as AllColourVARs RESIDENT FinalCodes_ColourScheme;
+
+//insert into a varibale
+LET vAllColourVARs = PEEK('AllColourVARs', 0, 'AllColourVARs');
+DROP TABLE AllColourVARs;
+
+//Run var to load VARs into QVW file
+$(vAllColourVARs);
+
+//Purge "vAllColourVARs" variable
+LET vAllColourVARs = '';
+
+//DROP TABLE FinalCodes_ColourScheme;
+///$tab Category Matching
+CategorySearchString_List:
+LOAD
+	SearchString,
+	Category,
+	ROWNO() as SortOrder_CategorySearchString
+;
+LOAD * INLINE [
+	SearchString, Category
+	Accomodation, Accommodation
+	Air BnB, Accommodation
+	Airlines, Travel to Client Site
+	Bank Charge, Bank Charges
+	Bill Payment Janakiram, Reimbursement of Expenses
+	Bill Payment Skala, Reimbursement of Expenses
+	Business Phone, Telephone
+	Clarity, Accountant Fees
+	Corp Tax, Corporate Tax
+	Dinner, Food
+	Dividend, Dividend
+	EasyJet, Travel to Client Site
+	Eurostar, Travel to Client Site
+	Expense, Reimbursement of Expenses
+	Food, Food
+	FS Dashboard, Invoice
+	HMRC VAT, VAT Payment
+	Hotel, Accommodation
+	Insurance, Business Insurance
+	Interest Received, Interest Received
+	Interest Paid, Interest Received
+	Interserve, IT Consumables
+	INV-, Invoice
+	Lenovo, IT Consumables
+	Lunch, Food
+	Microsoft, IT Consumables
+	Pension, Pension
+	Proz, Professional Affiliation
+	Reimbursement, Reimbursement of Expenses
+	Salary, Salary
+	Softwarexperts, Invoice
+	Software, IT Consumables
+	Taxi, Taxi
+	Trados, IT Consumables
+	Travel, Travel to Client Site
+	Vodafone, Telephone
+	You parking space, Travel to Client Site
+];
+
+CategorySearchString:
+LOAD
+	CHR(39) & '*' & CONCAT(DISTINCT REPLACE(SearchString,' ', '*'), '*' & CHR(39) & ',' & CHR(39) & '*', SortOrder_CategorySearchString) & '*' & CHR(39) as CategorySearchString
+RESIDENT CategorySearchString_List;
+
+LET vCategorySearchString = PEEK('CategorySearchString', 0, 'CategorySearchString');
+DROP TABLE CategorySearchString;
+
+CategorySearchString_Map:
+MAPPING LOAD
+	SortOrder_CategorySearchString,
+	Category
+RESIDENT CategorySearchString_List;
+
+DROP TABLE CategorySearchString_List;
+///$tab Clients
+SneeClientList:
+LOAD * INLINE [
+	SneeClientList
+	CloudStream Global
+	Cognizant
+	Harvey Nash
+	Infinity Quest
+	LACO Consulting
+	softwareXperts GmbH
+	Yoh Solutions
+	Fitch Ratings
+];
+
+
+[Date Basis]:
+LOAD * INLINE [
+	Date Basis
+	Invoice Payment
+	Service Rendered
+];
+///$tab VAT Referencing
+ReceivableVAT_Map:
+MAPPING LOAD 
+	[Invoice Number], 
+     VAT
+FROM
+[Skalability_Limited__CRN__11100462__-_Receivable_Invoice_Summary.xlsx]
+(ooxml, embedded labels, table is [Receivable Invoice Summary]);
+
+
+PayableVAT:
+LOAD DISTINCT
+	Contact as PayableVATContact
+FROM
+[Skalability_Limited__CRN__11100462__-_Payable_Invoice_Summary.xlsx]
+(ooxml, embedded labels, table is [Payable Invoice Summary])
+WHERE VAT > 0 AND WILDMATCH(Contact, '*cheenu*') = 0;
+///$tab Data
+Data:
+LOAD
+	*,
+	IF(ISNULL(Stream_Temp03), 'Skalability', Stream_Temp03) as Stream,
+	IF(LEN(Revenue) = 0, -1 * Cost, Revenue) as Amount,
+	IF(LEN([Net Revenue]) = 0, -1 * [Net Cost], [Net Revenue]) as [Net Amount]
+	;
+LOAD 
+	*,
+	IF(ISNULL(Stream_Temp02),
+		PICK(MATCH(LOWER(Category),
+					'accommodation', 'food', 'telephone', 'travel to client site', 'professional affiliation', 'skalability', 'interest received', 'interest paid', 'bank charges'),
+					'CJ', 'CJ', 'CJ', 'CJ', 'CS', 'Skalability', 'Skalability', 'Skalability', 'Skalability'), Stream_Temp02)
+	as Stream_Temp03,
+	Revenue - VAT as [Net Revenue],
+	Cost - VAT as [Net Cost]
+;
+LOAD
+	*,
+	ApplyMap('ReceivableVAT_Map', [Invoice Number],
+		IF(EXISTS(PayableVATContact, Description), 1/6 * Cost, 0)) as VAT,
+	IF(ISNULL(Stream_Temp01),
+		PICK(WILDMATCH(Reference, '*cs -*', '*cj -*', '*skalability*'), 'CS', 'CJ', 'Skalability'), Stream_Temp01) as Stream_Temp02
+;
+LOAD
+	*,
+	IF(Category = 'Invoice', 'INV-' & SUBFIELD(SUBFIELD(Reference, 'INV-', 2), '|',1)) as [Invoice Number],
+	IF(Category = 'Invoice', 
+		IF(EXISTS(SneeClientList, Description) = -1, 'CJ', 'CS'),
+			PICK(WILDMATCH(Description, '*catherine*', '*cheenu*', '*sreenivasayyar*'), 'CS', 'CJ', 'CJ')) as Stream_Temp01,
+	IF(Cost > 0,
+		IF(MATCH(Category, 'Salary', 'Pension', 'Dividend', 'Reimbursement of Expenses', 'VAT Payment', 'Corporate Tax') <> 0, 'Business Cost', 'Operational Cost')) as [Cost Type],
+	DUAL(SR_FiscalYearTemp & '-' & (SR_FiscalYearTemp+1), SR_FiscalYearTemp) as [Service Rendered Fiscal Year],
+;
+LOAD
+	*,
+	IF(LEN(Check02) > 1, Check02,
+		IF(LEN(Check01) > 1, Check01, 
+			IF(LOWER(Description) = 'reconciliation adjustment', 'Reconciliation Adjustment', 'Other'))) as Category,
+	DUAL(FiscalYearTemp & '-' & (FiscalYearTemp+1), FiscalYearTemp) as [Fiscal Year],
+	
+	 Day([Service Rendered Date]) as [Service RenderedDay],
+	 Month([Service Rendered Date]) as [Service RenderedMonth],
+	 Year([Service Rendered Date]) as [Service Rendered Year],
+	 IF(Month([Service Rendered Date]) <= 3, Year([Service Rendered Date]) -1,
+	 	IF(Month([Service Rendered Date]) = 4 AND Day([Service Rendered Date]) < 5, Year([Service Rendered Date]) -1, Year([Service Rendered Date]))) as SR_FiscalYearTemp,
+	 DATE(MONTHSTART([Service Rendered Date]), 'MMM-YYYY') as [Service Rendered MonthYear]
+;
+LOAD
+	 RecNo() as RecordId,
+	 Day(Date) as Day,
+	 Month(Date) as Month,
+	 Year(Date) as Year,
+	 IF(Month(Date) <= 3, Year(Date) -1,
+	 	IF(Month(Date) = 4 AND Day(Date) < 5, Year(Date) -1, Year(Date))) as FiscalYearTemp,
+	 DATE(MONTHSTART(Date), 'MMM-YYYY') as MonthYear,
+	 Date,
+	 IF(ISNULL([Service Rendered Date]), Date, [Service Rendered Date]) as [Service Rendered Date],
+	 IF(Date(Date, 'DD-MMM-YYYY') = '24-May-2020' AND WILDMATCH(Description, '*cheenu@*') = 1, 'Lenovo',
+	 	IF(WILDMATCH(Description, '*cheenu@*') = 1, 'Sreenivasayyar Janakiram',
+	 		IF(WILDMATCH(Description, '*catherine@*') = 1, 'Catherine Skala',
+     		TRIM(REPLACE(Description, 'Payment:', ''))))) as Description, //Transaction, 
+     Description as Description_Original,
+     IF(Date(Date, 'DD-MMM-YYYY') = '24-May-2020' AND WILDMATCH(Description, '*cheenu@*') = 1, 'Lenovo laptop for Translation', Reference) as Reference,
+//     Reference,
+	 ApplyMap('CategorySearchString_Map', WILDMATCH(Reference, $(vCategorySearchString))) as Check01,
+	 ApplyMap('CategorySearchString_Map', WILDMATCH(Description, $(vCategorySearchString))) as Check02,
+     Received as Revenue,
+     Spent as Cost,
+     Balance,
+     [Documents Attached],
+     IF(ISNULL(Info), 'Actual', Info) as Info
+FROM [Transaction Accounts.xlsx]
+(ooxml, embedded labels);
+
+DROP FIELDS Stream_Temp01, Stream_Temp02, Stream_Temp03, Check01, Check02, FiscalYearTemp;
+
+DROP TABLES SneeClientList, PayableVAT;
