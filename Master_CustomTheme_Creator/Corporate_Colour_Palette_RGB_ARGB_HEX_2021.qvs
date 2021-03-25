@@ -1,0 +1,206 @@
+﻿///$tab Main
+/*
+ARGB are translucent colours and therefore each ARGB needs to be converted to a solid RBG to use them in Qlik objects.
+This script also generates HEX colour codes.
+
+The below script requires editing:
+	(i)		the "Opacity_Alpha" table to insert the colour percentages (opacity) you want to generate for your colour palette;
+	(ii)	the "RGB_Base" table to insert all the base colour from which you want to create an array of colour for each level (percentage) of opacity.
+		N.B. TO EDIT INLINE TABLES below with the "Inline Data Wizard":
+		(i) 	comment out the "[Table Name]";
+		(ii) 	place cursor somewhere in "LOAD * INLINE" statement;
+		(iii) 	keyboard shortcuts "CTRL+E" (use copy/paste function, if desired); and
+		(iv) 	uncomment "[Table Name]" before reload script.
+
+Below is the Equation/algorithm to convert ARGB to a (solid) RGB:
+{[255-Base_RGB_Colour] * [1-(Alpha/255)] + Base_RGB_Colour},
+where Alpha = [(Opacity % as a decimal) * 255]
+
+Script written by Cheenu Janakiram
+*/
+
+
+//Set "Percent Opacities" you want to create the Colour Palette ("Opacity_Alpha" table):
+Opacity_Alpha:
+LOAD * INLINE [
+    %_Opacity_Alpha
+    100
+    75
+    55
+    40
+    25
+];
+
+
+//Load base colours in RGB ("RGB_Base" table) as given by brank marketing document
+//Solutions
+RGB_Base:
+LOAD * INLINE [
+   ColourName, R, G, B
+   Blue, 5, 99, 184
+   Turquoise, 11, 178, 155
+   BlueLight, 42, 138, 191
+   Purple, 174, 63, 133
+   Yellow, 234, 205, 86
+   Violet, 190, 136, 222
+   Green, 144, 203, 92
+   Orange, 229, 165, 78
+   BlueSky, 51, 204, 255
+   RedLight, 233, 95, 90
+   BlueDark, 23, 65, 116
+   Red, 204, 0, 51
+   BlueMidnight, 45, 55, 78
+   Black, 51, 51, 51
+];
+
+
+////Additional Palettes --> Will only be as VARs in front-end. Won't be used in QlikSense default CustomTheme palette.
+//Pantone scheme
+//CONCATENATE(RGB_Base)
+//LOAD * INLINE [
+//    ColourName, R, G, B
+//    pRed, 204, 0, 51
+//    pGray, 94, 106, 113
+//    pGrayLight, 209, 212, 211
+//    pBlueSky, 99, 177, 229
+//    pBlack, 0, 0, 0
+//    pPurple, 121, 34, 88
+//    pBlueExcel, 0, 72, 194
+//    pCream, 246, 238, 221
+//    pRed_2, 172, 26, 47
+//    pGray_2, 118, 106, 99
+//    pGreen, 90, 142, 34
+//    pYellow, 236, 172, 0
+//];
+
+
+
+FOR vOpacity = 1 TO NoOfRows('Opacity_Alpha')
+
+	LET vOpacity_Alpha = FLOOR((PEEK('%_Opacity_Alpha', vOpacity-1, 'Opacity_Alpha') / 100) * 255);
+	LET vOpacity% = PEEK('%_Opacity_Alpha', vOpacity-1, 'Opacity_Alpha');
+
+		FinalCodes_ColourScheme:
+		//Generate SOLIDS COLOURS and related variable names: "c[Colour Name][Opacity Percentage]".
+		LOAD
+			'RGB' as Colour_Scheme,
+			Colour_Name,
+			NULL() as ColourName_QS_CustomTheme,
+			NULL() as ColourName_QS_CSS,
+			Colour_Variable,
+			ColourCode,
+			'LET ' & Colour_Variable & ' = ' & ColourCode & ';' as FullVariableScriptLine,
+			Converted_R_SolidColour,
+			Converted_G_SolidColour,
+			Converted_B_SolidColour,
+			SortOrder
+			;
+		LOAD
+			*,
+			RGB(Converted_R_SolidColour, Converted_G_SolidColour, Converted_B_SolidColour) as ColourCode;
+		LOAD
+			ColourName as Colour_Name,
+			'c' & ColourName & $(vOpacity%) as Colour_Variable,
+			$(vOpacity_Alpha) as [Opacity - Alpha],
+			$(vOpacity%) as Opacity%,
+			ROUND(((255 - R) * (1 - ($(vOpacity_Alpha)/255))) + R) as Converted_R_SolidColour,
+			ROUND(((255 - G) * (1 - ($(vOpacity_Alpha)/255))) + G) as Converted_G_SolidColour,
+			ROUND(((255 - B) * (1 - ($(vOpacity_Alpha)/255))) + B) as Converted_B_SolidColour,
+			RECNO() as SortOrder
+		RESIDENT RGB_Base;
+		
+		SortOrder_Map: MAPPING LOAD Colour_Variable, SortOrder RESIDENT FinalCodes_ColourScheme;
+		
+		//Generate ARGB (TRANSLUCENT) COLOURS and related variable names: "c[Colour Name][Opacity Percentage]_ARGB".
+		Concatenate(FinalCodes_ColourScheme)
+		LOAD
+			'ARGB' as Colour_Scheme,
+			ColourName as Colour_Name,
+			NULL() as ColourName_QS_CustomTheme,
+			NULL() as ColourName_QS_CSS,
+			'c' & ColourName & $(vOpacity%) & '_ARGB' as Colour_Variable,
+			ARGB($(vOpacity_Alpha), R, G, B ) as ColourCode,
+			'LET c' & ColourName & $(vOpacity%) & 'ARGB = ARGB(' & $(vOpacity_Alpha) & ',' & R & ',' & G & ',' & B & ');' as FullVariableScriptLine,
+			ApplyMap('SortOrder_Map', 'c' & ColourName & $(vOpacity%)) as SortOrder
+		RESIDENT RGB_Base;
+		
+		
+		//Generate HEX COLOURS with preceding hash ("#") and related variable names: "c[Colour Name][Opacity Percentage]_HEX"
+		//For usage in QlikSense
+		Concatenate(FinalCodes_ColourScheme)
+		LOAD
+			'HEX' as Colour_Scheme,
+			Colour_Name,
+			ColourName_QS_CustomThemePart1 & ColourCode & '",' as ColourName_QS_CustomTheme,
+			ColourName_CSSPart1 & ColourCode & ';}' as ColourName_QS_CSS,
+			Colour_Variable,
+			ColourCode,
+			'SET ' & Colour_Variable & ' = ' & CHR(39) & ColourCode & CHR(39) & ';' as FullVariableScriptLine,
+			SortOrder
+			;
+		LOAD
+			*,
+			'#' & UPPER(
+				IF(LEN(NUM(Converted_R_HEXColour, '(hex)')) = 1, '0' & NUM(Converted_R_HEXColour, '(hex)'), NUM(Converted_R_HEXColour, '(hex)'))
+				&
+				IF(LEN(NUM(Converted_G_HEXColour, '(hex)')) = 1, '0' & NUM(Converted_G_HEXColour, '(hex)'), NUM(Converted_G_HEXColour, '(hex)'))
+				& 
+				IF(LEN(NUM(Converted_B_HEXColour, '(hex)')) = 1, '0' & NUM(Converted_B_HEXColour, '(hex)'), NUM(Converted_B_HEXColour, '(hex)'))
+			) as ColourCode;
+		LOAD
+			ColourName as Colour_Name,
+			'"@' & LOWER(ColourName) & '-'& $(vOpacity%) & '": "' as ColourName_QS_CustomThemePart1,
+			'.' & LOWER(ColourName) & '-'& $(vOpacity%) & '{ background-color: ' as ColourName_CSSPart1,
+			'c' & ColourName & $(vOpacity%)& '_HEX' as Colour_Variable,
+			$(vOpacity_Alpha) as [Opacity - Alpha],
+			$(vOpacity%) as Opacity%,
+			ROUND(((255 - R) * (1 - ($(vOpacity_Alpha)/255))) + R) as Converted_R_HEXColour,
+			ROUND(((255 - G) * (1 - ($(vOpacity_Alpha)/255))) + G) as Converted_G_HEXColour,
+			ROUND(((255 - B) * (1 - ($(vOpacity_Alpha)/255))) + B) as Converted_B_HEXColour,
+			ApplyMap('SortOrder_Map', 'c' & ColourName & $(vOpacity%)) as SortOrder
+		RESIDENT RGB_Base;
+
+
+NEXT vOpacity;
+
+DROP TABLE Opacity_Alpha;
+DROP TABLE RGB_Base;
+
+//For showing colours in front-end in HEX codes Table
+LEFT JOIN(FinalCodes_ColourScheme)
+LOAD
+	Colour_Variable & '_HEX' as Colour_Variable,
+	ColourCode as ColourCode_RGB
+RESIDENT FinalCodes_ColourScheme
+WHERE Colour_Scheme = 'RGB';
+
+//Load/concatenate all VARs (script line) into a table
+AllColourVARs:
+LOAD Concat(FullVariableScriptLine) as AllColourVARs RESIDENT FinalCodes_ColourScheme;
+
+//insert into a varibale
+LET vAllColourVARs = PEEK('AllColourVARs', 0, 'AllColourVARs');
+DROP TABLE AllColourVARs;
+
+//Run var string to load VARs into this QVW file
+$(vAllColourVARs);
+
+//Purge "vAllColourVARs" variable
+LET vAllColourVARs = '';
+
+//Uncomment the below line if you put this script into an operational script:
+//DROP TABLE FinalCodes_ColourScheme;
+
+TableSelection:
+LOAD * INLINE [
+	TableSelection
+	HEX
+	ARGB
+];
+
+Colour_Palette:
+LOAD
+	Colour_Name,
+	IF(LEFT(Colour_Name, 1) = 'c', 'Main',
+			IF(LEFT(Colour_Name, 1) = 'p', 'Pantone')) as Colour_Palette
+RESIDENT FinalCodes_ColourScheme;
