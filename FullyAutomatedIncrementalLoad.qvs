@@ -10,11 +10,11 @@ PARAMETERS you must set in this sub-routine:
 
 VERY IMPORTANT NOTE:
 This was created for a connection to ORACLE DB. If changing the DB source, please edit "WHERE ROWNUM < 2"
-on line XX below to a syntax understood by a source DB. This part of script is supposed to get 2-3 lines
+on line 76 below to a syntax understood by a source DB. This part of script is supposed to get 2-3 lines
 of data from the source to cross check with the underlying QVDs if the DB table has been updated with new columns.
 
 Also, if not using an ORACLE DB, the date function that powers the incremental load from source DB might need to
-be changed on line XX below.
+be changed on line 144 below.
 
 Parameters are:
     1.  parDB_Connection - LIB connect to DB.
