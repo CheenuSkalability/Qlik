@@ -1,0 +1,206 @@
+TRACE ******  Loading the sub-routine for a Fully Automated Incremental Loading.  ******;
+/*
+Example of CALL:
+CALL FullyAutomatedIncrementalLoad('UDC_PRD_INFO_HISTO','INFOCENTRE','ODS_IMP_REGLEMENT','AND REGL_DAT_SUP IS NULL AND REGL_ID_REGL LIKE |H%|','REGL_ID_REGL','REGL_DAT_ECRI','YES');
+
+PARAMETERS you must set in this sub-routine:
+    1.  parQVDTargetFolder - which is the root folder where you want to write the QVDs. The script will then
+        generate a folder which has the same name as the DB table name and put the YYYYMM QVDs in there.
+    2.  parMaxDate - the start date for loading data from source DB.
+
+VERY IMPORTANT NOTE:
+This was created for a connection to ORACLE DB. If changing the DB source, please edit "WHERE ROWNUM < 2"
+on line XX below to a syntax understood by a source DB. This part of script is supposed to get 2-3 lines
+of data from the source to cross check with the underlying QVDs if the DB table has been updated with new columns.
+
+Also, if not using an ORACLE DB, the date function that powers the incremental load from source DB might need to
+be changed on line XX below.
+
+Parameters are:
+    1.  parDB_Connection - LIB connect to DB.
+    2.  parDB_Owner - owner in Oracle or schema (otherwise).
+    3.  parDB_Table - Database table name.
+    4.  parDB_WHERE_Clause - additional "WHERE" clause: this parameter must start with "AND [...]".
+    5.  parPrimaryKey - Primary key in the source DB table.
+    6.  parDBTableFieldsChecker_YES - YES or NO toggle whether you want the script to check the source DB table.
+        If you choose 'YES', then if the script sees a change in the table structure, it will rebuild all QVDs
+        and then continue with an incremental thereon, until a new change in the table structure, where it will
+        rebuild the QVDs, so on and so forth.
+
+*/
+
+sub FullyAutomatedIncrementalLoad(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause,parPrimaryKey,parDateTimeField,parDBTableFieldsChecker_YES)
+
+SET parQVDTargetFolder = 'LIB://Folder_Qlik_Sense_PRD/4_Extract_QVD';
+
+//Connection to the DB
+LIB CONNECT TO '$(parDB_Connection)';
+
+//where "parDBTableFieldsChecker_YES" reruns a check on SFDC table to make sure the QVDs have same structure. Otherwise, if SFDC
+//table structure has changed (new fields), it will rebuild all the YYYYMM QVDs from scratch with the new field(s).
+    /*  <----------- 1 - Comparing current Salesforce table structure to earliest YYYYMM QVD  ----------->*/ 
+    /*
+    First we need to cross-compare the structure of the first YYYYMM QVD to the fields in the SalesForce table
+    to see if the structure has changed (i.e. if new fields have been added).
+    */
+
+    //Get the start-date YYYYMM QVD to check for the table structure/fields in the QVD, if it exists.
+    IF '$(parDBTableFieldsChecker_YES)' =  'YES' AND ALT(QvdCreateTime('$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_$(vStartYearMonth).qvd'), 0) > 0 THEN
+    //Fetch full list of existing QVDs
+        FOR EACH file IN FileList('$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_*.qvd')
+            FileList_Temp: LOAD '$(file)' as FileList AUTOGENERATE(1);
+        NEXT file;
+
+        //Get first QVD in list --> which theoretically is oldest YYYYMM QVD in the list -->> "ORDER BY FileList ASC" below.
+        QVDFileNamesList:
+        NOCONCATENATE FIRST 1
+        LOAD 
+            FileList as QVDFileNamesList
+        RESIDENT FileList_Temp ORDER BY FileList ASC;
+        DROP TABLE FileList_Temp;
+
+        //Store the full path file in a VAR
+        LET vQVDFileNamesList = PEEK('QVDFileNamesList', 0, 'QVDFileNamesList');
+        DROP TABLE QVDFileNamesList;
+
+        //Get the list of fields in the oldest QVD
+        QVD_Fieldnames:
+        LOAD
+            FieldName as QVD_Fieldnames
+        FROM [$(vQVDFileNamesList)]
+        (XmlSimple, table is [QvdTableHeader/Fields/QvdFieldHeader]);
+
+        //Get a sample of the table to gather the field names in the Salesforce table as they are right now
+        SampleTable: SELECT * FROM "$(parDB_Owner)"."$(parDB_Table)" WHERE ROWNUM < 2;
+
+        //Put all the QVD fieldnames in a table/column
+        FOR Fieldnames = 1 TO NoOfFields('SampleTable')
+            LET vFieldnames = FieldName($(Fieldnames),'SampleTable');
+            Fieldnames: LOAD '$(vFieldnames)' as Fieldnames AUTOGENERATE(1);
+        NEXT Fieldnames;
+
+        //Cross-compare SFDC and see if there are differences
+        Field_Comparison:
+        LOAD * WHERE Check_Fields = 0;
+        LOAD EXISTS(QVD_Fieldnames, Fieldnames) as Check_Fields RESIDENT Fieldnames;
+
+        DROP TABLES QVD_Fieldnames, SampleTable, Fieldnames;
+    END IF;
+
+
+    //If there is data in "Field_Comparison" table AND the "parDBTableFieldsChecker_YES" is set to "YES"
+    IF ALT(NoOfRows('Field_Comparison'), 0) > 0 AND '$(parDBTableFieldsChecker_YES)' =  'YES' THEN
+        TRACE **** <== RUNNING A FULL TABLE LOAD FROM SOURCE!!! ==> ****;
+        SET vTableRebuild = 'Yes';
+    ELSE
+        TRACE **** Normal incremental data loading ****;
+        SET vTableRebuild = 'No';
+    END IF;
+    
+    IF NOT ISNULL(TableNumber('Field_Comparison')) THEN
+        DROP TABLE Field_Comparison;
+    END IF;
+
+    // ACTUAL DATA LOADING BELOW
+    /*  <----------- 2 - Support tables and information  ----------->*/
+    // 2a. Check the delta QVD files and folders to get the DateTime Field for that SFDC table
+    IF ALT(QvdCreateTime('$(parQVDTargetFolder)/_Delta/$(parDB_Table)_Max_$(parDateTimeField).qvd'), 0) > 0 AND '$(vTableRebuild)' <> 'Yes' THEN
+        Max_$(parDateTimeField):
+        LOAD
+            Max_$(parDateTimeField) as Max_$(parDateTimeField)
+        FROM [$(parQVDTargetFolder)/_Delta/$(parDB_Table)_Max_$(parDateTimeField).qvd] (QVD);
+        
+        // 2b. Establish difference between today and last loading date [PLUS 1 days, for safeguard --->  commented out below].
+        LET parMaxDate = DATE(PEEK('Max_$(parDateTimeField)', 0, 'Max_$(parDateTimeField)'), 'YYYYMMDD');
+        DROP TABLE Max_$(parDateTimeField);
+    ELSE
+        // 2c. This is the DEFAULT value on the first run and will fetch the last 2 years of data from each mentioned table in SFDC.
+        LET parMaxDate = DATE(MAKEDATE(2019,01,01), 'YYYYMMDD');
+        TRACE ***** LOADING ALL DATA *****;
+    END IF;
+
+    // //On weekends, run last 2 months of data
+    // IF WeekDay(TODAY()) = 'Sat' THEN
+    //     LET parMaxDate = NUM(TODAY()) - NUM(ADDMONTHS(MONTHSTART(TODAY()), -1))+1;
+    // END IF;
+    
+    TRACE ***** LOADING DATA FOR GREATER THAN $(parMaxDate) *****;
+
+    //Clean out the WHERE-Clause of single-quotes:
+    LET parDB_WHERE_Clause_Clean = REPLACE('$(parDB_WHERE_Clause)', '|', CHR(39));
+
+    /*  <----------- 3 - SOQL loading of data from Salesforce  ----------->*/
+    // 3a. SOQL statement for all new records
+	TRACE *** Connecting to $(parDB_Connection) database ***; 
+    TRACE *** Taking data from "$(parDB_Owner)"."$(parDB_Table)" ***;
+    TRACE *** Incremental on the datetime field $(parDateTimeField) with the date value $(parMaxDate) ***;
+    TRACE *** With a WHERE-Clause $(parDB_WHERE_Clause_Clean);
+
+    [$(parDB_Table)]:
+    LOAD *, DATE(MONTHSTART($(parDateTimeField)), 'YYYYMM') as $(parDateTimeField)_YYYYMM;
+    SELECT * FROM "$(parDB_Owner)"."$(parDB_Table)"
+    WHERE $(parDateTimeField) >= TO_DATE('$(parMaxDate)', 'YYYYMMDD') AND $(parDateTimeField) <= TO_CHAR(ADD_MONTHS(SYSDATE,-0)) 
+    $(parDB_WHERE_Clause_Clean)
+    //DESC order of date to be stored in QVD
+    ORDER BY $(parDateTimeField) DESC;
+
+    // 3c. Identify the MAX DateTime Field in order to store into a Delta QVD for next run.
+    [Max_$(parDateTimeField)]:
+    LOAD
+        DATE(DAYSTART(MAX($(parDateTimeField))), 'YYYYMMDD') as Max_$(parDateTimeField)
+    RESIDENT [$(parDB_Table)];
+
+    /*  <---------------------- 4 - Store to QVDs  ---------------------->*/
+    // 4a. If the SFDC delta (change-data-capture) load table exists in the Qlik script and there is one record or more
+    IF NOT(ISNULL(TableNumber('$(parDB_Table)'))) AND ALT(NoOfRows('$(parDB_Table)'), 0) > 0 THEN
+
+        // 4b. Get the distinct values in the "DateTime Field_YYYYMM" to loop around
+        FOR Each FieldValue in FieldValueList('$(parDateTimeField)_YYYYMM')
+            DistinctFieldValues: LOAD '$(FieldValue)' as DistinctFieldValues AUTOGENERATE(1);
+        NEXT FieldValue;
+
+        // 4c. Loop through the distinct YYYYMM field values in order to generate the YYYYMM QVDs
+        FOR i=1 TO NoOfRows('DistinctFieldValues')
+            LET vDistinctFieldValues = PEEK('DistinctFieldValues', $(i)-1,'DistinctFieldValues');
+
+            // 4c-1. Check if the current YYYYMM QVD already exists... (or else if not re-building all QVDs)
+            IF ALT(QvdCreateTime('$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_$(vDistinctFieldValues).qvd'),0) > 0 AND  '$(vTableRebuild)' <> 'Yes' THEN
+                //... if the YYYYMM exists, load it distinct on the Primary Key ...
+                ExistingData: NOCONCATENATE LOAD * FROM [$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_$(vDistinctFieldValues).qvd] (QVD) WHERE NOT(EXISTS([$(parPrimaryKey)]));
+                //... and concatenate the "Delta" loaded from source to this one, before STORING the QVD.
+                SET vConcatenate = 'CONCATENATE(ExistingData)';
+            ELSE
+                //Otherwise, DISALLOW 'auto-concatenation' of the table. 
+                SET vConcatenate = 'NOCONCATENATE';
+            END IF;
+ 
+            ExistingData: $(vConcatenate) LOAD * RESIDENT [$(parDB_Table)] WHERE DATE($(parDateTimeField)_YYYYMM) = DATE#('$(vDistinctFieldValues)', 'YYYYMM');
+            //Now "empty" the vConcatenate variable for next value in loop, just in case.
+            SET vConcatenate = '';
+            //DROP the YYYYMM field value, as the QVD file name defines the YYYYMM of data, therefore this field is redundant.
+            DROP FIELD $(parDateTimeField)_YYYYMM FROM ExistingData;
+
+            //STORE THE DATA INTO THE QVD REVERSE CHRONOLOGICALLY SO THAT IT IS EASY TO PICK OUT THE LAST ("DateTime Field") VALUE FROM A QVD USING "WHERE NOT(EXISTS(Id))".
+            ExistingData_QVD: NOCONCATENATE LOAD * RESIDENT ExistingData ORDER BY $(parDateTimeField) DESC;
+            DROP TABLE ExistingData;        
+            STORE ExistingData_QVD INTO [$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_$(vDistinctFieldValues).qvd](qvd);
+            DROP TABLE ExistingData_QVD;
+        NEXT i;
+
+        // 4d. Drop the support table containing the distinct YYYYMM field values in the currently loaded SFDC extract.
+        DROP TABLE DistinctFieldValues;
+        // 4e. Drop the delta loaded SFDC table from the script.
+        DROP TABLE [$(parDB_Table)];
+
+        // 4f. Once latest data QVD is written, then write Max_DateTime Field to file
+        STORE [Max_$(parDateTimeField)] INTO [$(parQVDTargetFolder)/_Delta/$(parDB_Table)_Max_$(parDateTimeField).qvd](qvd);
+        DROP TABLE [Max_$(parDateTimeField)];
+    END IF;
+
+	//Blank-out the VARs for the next run
+	LET parDB_Owner = '';
+	LET parDB_Table = '';
+	LET parDateTimeField = '';
+	LET parDB_WHERE_Clause = '';
+    LET parDB_WHERE_Clause_Clean = '';
+end sub;
