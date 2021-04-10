@@ -21,6 +21,8 @@ Parameters are:
     2.  parDB_Owner - owner in Oracle or schema (otherwise).
     3.  parDB_Table - Database table name.
     4.  parDB_WHERE_Clause - additional "WHERE" clause: this parameter must start with "AND [...]".
+        ALSO - VERY IMPORTANT NOTE!!!! All single-quotes must be replaced by PIPE ("|"), as Qlik does not
+        like single-quotes in a VAR.
     5.  parPrimaryKey - Primary key in the source DB table.
     6.  parDBTableFieldsChecker_YES - YES or NO toggle whether you want the script to check the source DB table.
         If you choose 'YES', then if the script sees a change in the table structure, it will rebuild all QVDs
