@@ -1,7 +1,8 @@
 TRACE *** INCLUDE: $(vScriptPath)SubRoutines.qvs *** ;
 
-/* SUB-ROUTINES:
+REM Change Log:  ;
 
+/* SUB-ROUTINES:
 	1)	DropTemp_TablesANDFields
 	2)	StoreDropAllTables ()
 	3)	MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,parMappingField1,parMappingField2)
@@ -12,16 +13,25 @@ TRACE *** INCLUDE: $(vScriptPath)SubRoutines.qvs *** ;
 	8)	QVDFileNamesLoad(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles,parOPTIONALsubName)
 	9)	DistinctFieldValues(parField)
 	10)	DatesToBeFilled(parDateFieldRequiringFill,parDESC_or_ASC_Date_Ordering)
-	11)	QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
-	12)	CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
-	99)	QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
+	11) QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
+	12) SectionAccess(parADGroupsPIPEDelimited)
+	13) CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
+	14) StoreDrop(parQVDTargetFolder)
+	15) FullLoad_Oracle(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause)
+	16) FullyAutomatedIncrementalLoad_Oracle(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause,parPrimaryKey,parDateTimeField,parDBTableFieldsChecker_YES)
+	17) Oracle_CreateYMSlices(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause,parQVDStartDate,parQVDEndDate)
+	999) QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
 
 	*/
+
+
 /* 1) DropTemp_TablesANDFields 
  * Sub routine to drop all temporary tables and fields from a document.
  * Please note, temporary tables and fields to be dropped are the ones whose name starts with the suffix '_temp' case insensitive.
  */
-sub DropTemp_TablesANDFields
+
+SUB DropTemp_TablesANDFields
+
 	TRACE ***SUB: DropTemp_TablesANDFields *** ;
 	
 	LET i = 0;
@@ -48,35 +58,44 @@ sub DropTemp_TablesANDFields
 	LET a = ;
 	LET vTable = ;
 	LET vField = ;
-end sub;
+
+ENDSUB
 
 
 /* 2) StoreDropAllTables ()
  * Sub routine to Store  AND Drop all current tables
  * Takes 1 parameter: vStorePrefix to be set with the name of the transform, example: 'SBI-Ratings'
  */
-sub StoreDropAllTables (vStorePrefix)
+
+SUB StoreDropAllTables (vStorePrefix)
+
 	TRACE ***SUB: StoreDropAllNetTables *** ;
 	
 	LET vTableList = ;
 	
 	FOR i = 0 TO NoOfTables() - 1
+		
 		LET vTable = TableName (i);
 		LET vTableList = vTableList & CHR (39) & vTable & CHR (39) & ',' ;
-	NEXT i;
+				
+	NEXT
 	
 	LET vTableList = LEFT (vTableList, LEN (vTableList) - 1) ; //GB: Removes last ','
 	
 	FOR EACH vTable IN $(vTableList)
+	
 		TRACE STORE "$(vTable)" INTO [$(QVDataPath)SBI\$(vStorePrefix)$(vTable).qvd];
 		STORE "$(vTable)" INTO [$(QVDataPath)SBI\$(vStorePrefix)$(vTable).qvd];
-		DROP TABLE [$(vTable)];	
-	NEXT vTable;
+		
+		DROP TABLE [$(vTable)];
+	
+	NEXT
 	
 	//CLEAN UP
 	LET vTable = ;
 	LET vTableList = ;
-end sub;
+
+ENDSUB
 
 
 // 3) MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,parMappingField1,parMappingField2)
@@ -94,7 +113,8 @@ Rationale:
 _______________________
 This sub script is to ensure that if a MAPPING table is loaded from a 'large' QVD (defined below as having more than 100,000	
 rows of data), then the loading of the table will go via a temp table. Otherwise, it will load directly from QVD.
-This sub-routine ensures that as a QVD  size grows it will automatically toggle to an optimised load as the QVD reaches over 100,000 rows.
+This sub-routine ensures that as a QVD  size grows it will automatically toggle to an optimised load as the QVD reaches over
+100,000 rows.
 
 sub-routine parameters:
 parQVDTargetFolder				--> the LIB connection to the folder holding the QVD
@@ -134,6 +154,7 @@ sub MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,pa
 			[$(parMappingField1)],
 			[$(parMappingField2)]
 		FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD)
+		//Duplicate values are anyhow pointless in a MAPPING table
 		WHERE NOT(EXISTS([$(parMappingField1)]));
 		
 		//Then reload into a MAPPING table, 'iff' the mapping table was NOT named as a sub parameter, then when needs to be called for is "parQVDName_Map"
@@ -151,6 +172,7 @@ sub MappingFromQVD(parQVDTargetFolder,parQVDName,parMappingTableName_Optional,pa
 				[$(parMappingField1)] as [X1_$(vUniqueIDSuffix)],
 				[$(parMappingField2)] as [X2_$(vUniqueIDSuffix)]
 		FROM [$(parQVDTargetFolder)/$(parQVDName).qvd] (QVD)
+		//Duplicate values are anyhow pointless in a MAPPING table
 		WHERE NOT(EXISTS([$(parMappingField1)]));
 	END IF;
 end sub;
@@ -165,7 +187,6 @@ CALL DropAllTables('Table1|Temp Table 2');
 
 The following will just drop all tables, no exceptions:
 CALL DropAllTables;
-
 _______________________
 Rationale:
 _______________________
@@ -206,7 +227,6 @@ EXAMPLE of sub's CALL statement:
 
 The following will filter out date values in a QVD, as opposed to a standard WHERE-clause on the same date field.
 CALL QVDFilterDate('HelloWorld','MAKEDATE(2019,1,1)','TODAY()','User_Date','YYYY-MM-DD');
-
 _______________________
 Rationale:
 _______________________
@@ -256,7 +276,7 @@ Date:	2 September 2020
 */
 sub QVDFilterDate(parScriptLoadStatementSubName,parQVDStartDate,parQVDEndDate,parQVDDateField_Name,parQVDDateField_NUMorDateFormat)
 	//Establish from the sub's parameters whether to return the supporting date values as a NUM or as a Date() and in which format.
-	IF UPPER('$(parQVDDateFieldNUMorDateFormat)') = 'NUM' THEN
+	IF UPPER('$(parQVDDateField_NUMorDateFormat)') = 'NUM' THEN
 		SET vFunction = 'NUM';
 		SET vFunctionParameter = '';
 	ELSE
@@ -292,7 +312,6 @@ EXAMPLE of sub's CALL statement:
 -
 The following will filter out values in a QVD as opposed to a standard WHERE-clause on the same field.
 CALL QVDFilterField('HelloWorld','Delivery_Channel','FC Web|Excel Add-In');
-
 _______________________
 Rationale:
 _______________________
@@ -311,8 +330,8 @@ In 32 secs using a support table, which is the key of this sub-routine.
 1.	In the load statement from QVD, make sure you include the field for the WHERE(EXISTS()) clause, otherwise it will NOT load
 	in super-fast load mode.
 2.	This load script sub-routine is based on a "WHERE(EXISTS(ONE_FIELD))". Be wary of whether there are MORE values
-	of the "ONE_FIELD" in question at the time you are loading this sub-routine. The EXISTS() function is based on ALL  the values in 
-	that field at THAT moment in time.
+	of the "ONE_FIELD" in question at the time you are loading this sub-routine. The EXISTS() function is based on ALL  the values
+	in that field at THAT moment in time.
 
 sub-routine parameters:
 parScriptLoadStatementSubName		--> In your script, encapsulate your load statement into a sub-routine which will then be
@@ -378,7 +397,6 @@ end sub;
 /*
 EXAMPLE of sub's CALL statement:
 CALL QVDFileNamesList('lib://QVDATA/SBI_QlikSense/dev_temp','SBI-Extract-FC_User_Group','1');
-
 _______________________
 Rationale:
 _______________________
@@ -395,16 +413,19 @@ Date:	12 September 2020
 */
 sub QVDFileNamesList(parQVDTargetFolder,parQVDNamePrefix,parLoadLastNFiles)
 	FOR EACH File IN FileList('$(parQVDTargetFolder)/$(parQVDNamePrefix)_*.qvd')
-		FileList_Temp: LOAD '$(File)' as FileList AUTOGENERATE(1);
+		FileList_Temp: LOAD '$(File)' as FileList, QvdCreateTime('$(File)') as FileListDate AUTOGENERATE(1);
 	NEXT File;
 	QVDFileNamesList:
 	NOCONCATENATE FIRST $(parLoadLastNFiles)
 	LOAD
 		QVDFileNamesList,
+		QVDFileNamesListDate,
+		NUM(QVDFileNamesListDate) as QVDFileNamesListDateNUM,
 		SUBFIELD(SUBFIELD(QVDFileNamesListNUM_Temp, '_', SUBSTRINGCOUNT(QVDFileNamesListNUM_Temp, '_')+1), '.qvd', 1) as QVDFileNamesListNUM
 	;
 	LOAD 
 		FileList as QVDFileNamesList,
+		FileListDate as QVDFileNamesListDate,
 		SUBFIELD(FileList, '/', SUBSTRINGCOUNT(FileList, '/')+1) as QVDFileNamesListNUM_Temp
 	RESIDENT FileList_Temp ORDER BY FileList DESC;
 	DROP TABLE FileList_Temp;
@@ -421,7 +442,6 @@ sub User_Group_Temp
 end sub;
 
 CALL QVDFileNamesLoad('lib://QVDATA/SBI_QlikSense/dev_temp','SBI-Extract-FC_User_Group','1','User_Group_Temp');
-
 _______________________
 Rationale:
 _______________________
@@ -461,7 +481,6 @@ end sub;
 /*
 EXAMPLE of sub's CALL statement:
 CALL DistinctFieldValues('User_Status');
-
 _______________________
 Rationale:
 _______________________
@@ -485,18 +504,18 @@ end sub;
 /*
 EXAMPLE of sub's CALL statement:
 CALL DatesToBeFilled('User_Extract_Date');
-
 _______________________
 Rationale:
 _______________________
-In the case that there is date of data missing, you can use this sub to generate a table which will tell you where you should fill the data from.
-If the date data is missing on the last date of month, this table will return the first date of the next month, assuming that it exists.
+In the case that there is date of data missing, you can use this sub to generate a table which will tell you where you should fill
+the data from. If the date data is missing on the last date of month, this table will return the first date of the next month,
+assuming that it exists.
 
 This table (called "DatesToBeFilled" like the sub-name) will generate 3 columns of data:
 "DatesToBeFilled" which gives you the date of missing data.
 "DatesToBeFilledFrom" which gives you the date of the next-date available data that you have and where you should be substituting from.
-"DatesToBeFilledFrom_YYYYMM" which gives you the date of the next-YYYYMM-date available data that you have and where you should be substituting from,
-in case you need to call for a YYYYMM QVD with this field.
+"DatesToBeFilledFrom_YYYYMM" which gives you the date of the next-YYYYMM-date available data that you have and where you should be
+substituting from, in case you need to call for a YYYYMM QVD with this field.
 
 sub-routine parameters:
 parDateFieldRequiringFill			--> Date field you want to check for missing data and find the cloest "next-day" substitute for.
@@ -606,7 +625,6 @@ end sub;
 /*
 EXAMPLE of sub's CALL statement:
 CALL QVDCreateYMSlices('SBI-Extract-FC_User_Group','lib://QVDATA/SBI_QlikSense/EXTRACT/SBI-Extract-FC_User_Group','Extract_Date','User_Group_ID')
-
 _______________________
 Rationale:
 _______________________
@@ -623,6 +641,7 @@ parPRIMARYkey                       --> PRIMARY KEY in source data (use the fiel
 Author:	Cheenu Janakiram
 Date:	19 November 2020
 */
+
 sub QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDateFieldNameToCreateQVDSlices,parPRIMARYkey)
     CALL DistinctFieldValues('$(parDateFieldNameToCreateQVDSlices)');
 
@@ -649,12 +668,63 @@ sub QVDCreateYMSlices(parTableNameNEEDToNameAsTargetQVDs,parTargetFolder,parDate
     DROP TABLE DistinctFieldValues;
 end sub;
 
+// 12) SectionAccess(parADGroupsPIPEDelimited)
+/*<------ SUB: Create YYYYMM QVD Slices from a large QVD (this is a 'temp' sub to get you started on YYYYMM QVD slices ------>*/
+/*
+EXAMPLE of sub's CALL statement:
+CALL SectionAccess('QV_GSM - RO');
+_______________________
+Rationale:
+_______________________
+Using the AD Groups QVD, call for the (pipe-delimited) AD Group names that you want included in the section access.
+It uses the "QVDATA_SBI/SBI-Extract-AD-GROUPS.qvd" you can pipe-delimit the "ADGroup"s to which you want to give access to the app.
+If you need data reduction you have to preload/load the table immediately after the CALL to this sub using ACCESS and NTNAME as key
+fields. The list of usernames can be called for from a "RESIDENT SectionAccessTemp" which includes ADMIN accounts in
+"QVSCRIPTS_SBI_QlikSense/Config/SectionAccess_ADMINS.qvs".
 
-// 12) CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
+sub-routine parameters:
+parADGroupsPIPEDelimited			--> AD Group name for which users should be extracted and added to section access.
+
+Author:	Cheenu Janakiram
+Date:	09 January 2021
+*/
+/*
+sub SectionAccess(parADGroupsPIPEDelimited)
+    //Support table with AD Groups:
+    SupportTemp:
+    LOAD
+        SUBFIELD('$(parADGroupsPIPEDelimited)', '|') as ADGroup
+    AUTOGENERATE(1);
+
+    //SECTION ACCESS TEXT file & table
+    $(Must_Include=LIB://QVSCRIPTS_SBI_QlikSense/Config/SectionAccess_ADMINS.qvs);
+
+    //concatenate to table from TEXT/QVS file  --> SECTION ACCESS TEXT file & table
+    CONCATENATE(SectionAccessTemp)
+    LOAD
+        IF(MATCH(NETWARE_LOGIN, '$(vSpecialAccess)'), 'ADMIN', 'USER') as ACCESS_Temp,
+        'FITCH\' & UPPER(NETWARE_LOGIN) as NTNAME_Temp
+    FROM [LIB://QVDATA_SBI/SBI-Extract-AD-GROUPS.qvd] (qvd)
+    WHERE ActiveFlag = 1 AND EXISTS(ADGroup);
+
+	DROP TABLE SupportTemp;
+
+    SECTION Access;
+    SectionAccess:
+    LOAD
+        ACCESS_Temp as ACCESS,
+        NTNAME_Temp as NTNAME
+    RESIDENT SectionAccessTemp;
+
+    SECTION Application;
+end sub;
+*/
+
+// 13) CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateFormat)
 /*<------ SUB: Create all derivations of date/time from a date field ------>*/
 /*
 EXAMPLE of sub's CALL statement:
-CALL CreateDates('BusinessInvoices','StartDate|EndDate','MM/DD/YYYY');
+CALL CreateDates('BoB','BOB_SUBSCRIPTION_START_DATE|BOB_SUBSCRIPTION_END_DATE','MM/DD/YYYY');
 _______________________
 Rationale:
 _______________________
@@ -739,12 +809,400 @@ sub CreateDates(parTargetTableName,parDateFieldNames_PIPE_Delimited,parDateForma
 end sub;
 
 
+/* 14) StoreDrop(parQVDTargetFolder)
+ * Sub routine to Store  AND Drop all current tables
+ * Takes 1 parameter: vStorePrefix to be set with the name of the transform, example: 'SBI-Ratings'
+
+ Same exact sub as "StoreDropAllTables ()", full target folder path can be set in parameter.
+ */
+
+sub StoreDrop(parQVDTargetFolder)
+	TRACE ***SUB: StoreDropAllNetTables *** ;	
+	LET vTableList = ;
+	FOR i = 0 TO NoOfTables() - 1
+		LET vTable = TableName (i);
+		LET vTableList = vTableList & CHR (39) & vTable & CHR (39) & ',' ;
+	NEXT;
+	
+	LET vTableList = LEFT (vTableList, LEN (vTableList) - 1) ; //GB: Removes last ','
+	
+	FOR EACH vTable IN $(vTableList)	
+		TRACE STORE "$(vTable)" INTO [$(parQVDTargetFolder)/$(vTable).qvd];
+		STORE "$(vTable)" INTO [$(parQVDTargetFolder)/$(vTable).qvd];
+		DROP TABLE [$(vTable)];
+	NEXT;
+	
+	//CLEAN UP
+	LET vTable = ;
+	LET vTableList = ;
+end sub;
+
+
+// 15) FullLoad_Oracle(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause)
+/*
+parametres de la sub-routine :
+parDB_Connection			--> Connection LIB a BDD.
+parDB_Owner					--> Nom de Owner/Schema de la BDD.
+parDB_Table					--> Nom de la table BDD.
+parDB_WHERE_Clause			--> WHERE-clause: doit commencer avec "AND" et tout guimets doivent etre remplaces par "|".
+
+Author:	Cheenu Janakiram
+Date:	14 Avril 2021
+*/
+sub FullLoad_Oracle(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause)
+    //LOOP pour extraction de table completes
+	LET parDB_WHERE_ClauseFinal	= REPLACE('$(parDB_WHERE_Clause)', '|', CHR(39));
+
+	TRACE *** Connecte a la BDD: $(parDB_Connection) ***; 
+    TRACE *** Pour prendre des donnees de "$(parDB_Owner)"."$(parDB_Table)" ***;
+    TRACE *** Avec la WHERE-Clause $(parDB_WHERE_ClauseFinal);
+
+	//Connection BDD
+	LET vScriptStartDB		= NOW();
+
+	LIB CONNECT TO '$(parDB_Connection)';
+    //Select etoile table
+    [$(parDB_Table)]: SELECT * FROM "$(parDB_Owner)"."$(parDB_Table)" $(parDB_WHERE_ClauseFinal);
+
+	LET parDB_NoofRows = NoofRows('$(parDB_Table)');
+
+	LET vScriptEndDB		= NOW();
+	LET vScriptDurationDB	= INTERVAL('$(vScriptEndDB)' - '$(vScriptStartDB)', 'HH:mm:ss');
+
+	//Sauvegarder dans dossier "4_Extract_QVD"
+	LET vScriptStartStore		= NOW();
+
+	STORE [$(parDB_Table)] INTO [lib://Folder_Qlik_Sense_PRD/4_Extract_QVD/$(parDB_Table).qvd] (QVD);
+	DROP TABLE [$(parDB_Table)];
+
+	LET vScriptEndStore			= NOW();
+	LET vScriptDurationStore	= INTERVAL('$(vScriptEndStore)' - '$(vScriptStartStore)', 'HH:mm:ss');
+
+	TableInfo:
+	LOAD
+		'$(parDB_Connection)'			as DB_LIB_Connection,
+		'$(parDB_Owner)'				as DB_Owner,
+		'$(parDB_Table)'				as DB_Table,
+		NUM('$(parDB_NoofRows)', '###,###,###,###') as DB_NoofRows,
+		'$(parDB_WHERE_ClauseFinal)'	as DB_WhereClause,
+		'$(vScriptDurationDB)'			as Extraction_Duree,
+		'$(vScriptStartDB)'				as Extraction_Debut,
+		'$(vScriptEndDB)'				as Extraction_Fin,
+		'$(vScriptDurationStore)'		as Store_Duree,
+		'$(vScriptStartStore)'			as Store_Debut,
+		'$(vScriptEndStore)'			as Store_Fin
+	AUTOGENERATE(1);
+
+end sub;
+
+
+// 16) FullyAutomatedIncrementalLoad_Oracle(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause,parPrimaryKey,parDateTimeField,parDBTableFieldsChecker_YES)
+/*
+parametres de la sub-routine :
+parDB_Connection			--> Connection LIB a BDD.
+parDB_Owner					--> Nom de Owner/Schema de la BDD.
+parDB_Table					--> Nom de la table BDD.
+parDB_WHERE_Clause			--> WHERE-clause: doit commencer avec "AND" et tout guimets doivent etre remplaces par "|".
+parPrimaryKey				--> cle primaire de la table BDD. Ceci est pour une "WHERE NOT(EXISTS(cle_primaire)) pour prendre que la derniere valeur de cette cle dans le mois.
+parDateTimeField			--> champ de date-heure sur laquelle l'incrementale est base.
+parDBTableFieldsChecker_YES	--> YES ou NO: est-ce qu'il faut reconstruire toutes les QVDs quand la table de BDD change?
+
+Author:	Cheenu Janakiram
+Date:	12 Avril 2021
+*/
+sub FullyAutomatedIncrementalLoad_Oracle(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause,parPrimaryKey,parDateTimeField,parDBTableFieldsChecker_YES)
+TRACE ******  Loading the sub-routine for a Fully Automated Incremental Loading.  ******;
+SET parQVDTargetFolder = 'LIB://Folder_Qlik_Sense_PRD/4_Extract_QVD';
+
+//Connection to the DB
+LET vScriptStartDB		= NOW();
+
+LIB CONNECT TO '$(parDB_Connection)';
+
+//where "parDBTableFieldsChecker_YES" reruns a check on SFDC table to make sure the QVDs have same structure. Otherwise, if SFDC
+//table structure has changed (new fields), it will rebuild all the YYYYMM QVDs from scratch with the new field(s).
+    /*  <----------- 1 - Comparing current Salesforce table structure to earliest YYYYMM QVD  ----------->*/ 
+    /*
+    First we need to cross-compare the structure of the first YYYYMM QVD to the fields in the SalesForce table
+    to see if the structure has changed (i.e. if new fields have been added).
+    */
+
+    //Get the start-date YYYYMM QVD to check for the table structure/fields in the QVD, if it exists.
+    IF '$(parDBTableFieldsChecker_YES)' =  'YES' AND ALT(QvdCreateTime('$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_$(vStartYearMonth).qvd'), 0) > 0 THEN
+    //Fetch full list of existing QVDs
+        FOR EACH file IN FileList('$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_*.qvd')
+            FileList_Temp: LOAD '$(file)' as FileList AUTOGENERATE(1);
+        NEXT file;
+
+        //Get first QVD in list --> which theoretically is oldest YYYYMM QVD in the list -->> "ORDER BY FileList ASC" below.
+        QVDFileNamesList:
+        NOCONCATENATE FIRST 1
+        LOAD 
+            FileList as QVDFileNamesList
+        RESIDENT FileList_Temp ORDER BY FileList ASC;
+        DROP TABLE FileList_Temp;
+
+        //Store the full path file in a VAR
+        LET vQVDFileNamesList = PEEK('QVDFileNamesList', 0, 'QVDFileNamesList');
+        DROP TABLE QVDFileNamesList;
+
+        //Get the list of fields in the oldest QVD
+        QVD_Fieldnames:
+        LOAD
+            FieldName as QVD_Fieldnames
+        FROM [$(vQVDFileNamesList)]
+        (XmlSimple, table is [QvdTableHeader/Fields/QvdFieldHeader]);
+
+        //Get a sample of the table to gather the field names in the Salesforce table as they are right now
+        SampleTable: SELECT * FROM "$(parDB_Owner)"."$(parDB_Table)" WHERE ROWNUM < 2;
+
+        //Put all the QVD fieldnames in a table/column
+        FOR Fieldnames = 1 TO NoOfFields('SampleTable')
+            LET vFieldnames = FieldName($(Fieldnames),'SampleTable');
+            Fieldnames: LOAD '$(vFieldnames)' as Fieldnames AUTOGENERATE(1);
+        NEXT Fieldnames;
+
+        //Cross-compare SFDC and see if there are differences
+        Field_Comparison:
+        LOAD * WHERE Check_Fields = 0;
+        LOAD EXISTS(QVD_Fieldnames, Fieldnames) as Check_Fields RESIDENT Fieldnames;
+
+        DROP TABLES QVD_Fieldnames, SampleTable, Fieldnames;
+    END IF;
+
+
+    //If there is data in "Field_Comparison" table AND the "parDBTableFieldsChecker_YES" is set to "YES"
+    IF ALT(NoOfRows('Field_Comparison'), 0) > 0 AND '$(parDBTableFieldsChecker_YES)' =  'YES' THEN
+        TRACE **** <== RUNNING A FULL TABLE LOAD FROM SOURCE!!! ==> ****;
+        SET vTableRebuild = 'Yes';
+    ELSE
+        TRACE **** Normal incremental data loading ****;
+        SET vTableRebuild = 'No';
+    END IF;
+    
+    IF NOT ISNULL(TableNumber('Field_Comparison')) THEN
+        DROP TABLE Field_Comparison;
+    END IF;
+
+    // ACTUAL DATA LOADING BELOW
+    /*  <----------- 2 - Support tables and information  ----------->*/
+    // 2a. Check the delta QVD files and folders to get the DateTime Field for that SFDC table
+    IF ALT(QvdCreateTime('$(parQVDTargetFolder)/_Delta/$(parDB_Table)_Max_$(parDateTimeField).qvd'), 0) > 0 AND '$(vTableRebuild)' <> 'Yes' THEN
+        Max_$(parDateTimeField):
+        LOAD
+			//Buffer of 3 days for syncing delays
+            (Max_$(parDateTimeField)-3) as Max_$(parDateTimeField)
+        FROM [$(parQVDTargetFolder)/_Delta/$(parDB_Table)_Max_$(parDateTimeField).qvd] (QVD);
+        
+        // 2b. Establish difference between today and last loading date [PLUS 1 days, for safeguard --->  commented out below].
+        LET vMaxDate = DATE(PEEK('Max_$(parDateTimeField)', 0, 'Max_$(parDateTimeField)'), 'YYYYMMDD');
+        DROP TABLE Max_$(parDateTimeField);
+    ELSE
+        // 2c. This is the DEFAULT value on the first run and will fetch the last 2 years of data from each mentioned table in SFDC.
+        LET vMaxDate = DATE(MAKEDATE(2010,01,01), 'YYYYMMDD');
+        TRACE ***** LOADING ALL DATA *****;
+    END IF;
+
+    // //On weekends, run last 2 months of data
+    // IF WeekDay(TODAY()) = 'Sat' THEN
+    //     LET vMaxDate = NUM(TODAY()) - NUM(ADDMONTHS(MONTHSTART(TODAY()), -1))+1;
+    // END IF;
+    
+    TRACE ***** LOADING DATA FOR GREATER THAN $(vMaxDate) *****;
+
+    //Clean out the WHERE-Clause of single-quotes:
+    LET parDB_WHERE_Clause_Clean = REPLACE('$(parDB_WHERE_Clause)', '|', CHR(39));
+
+    /*  <----------- 3 - SOQL loading of data from Salesforce  ----------->*/
+    // 3a. SOQL statement for all new records
+	TRACE *** Connecte a la BDD: $(parDB_Connection) ***; 
+    TRACE *** Pour prendre des donnees de "$(parDB_Owner)"."$(parDB_Table)" ***;
+    TRACE *** Incrementale sur le champ date $(parDateTimeField) avec la valeur date $(vMaxDate) ***;
+    TRACE *** Avec la WHERE-Clause $(parDB_WHERE_Clause_Clean);
+
+    [$(parDB_Table)]:
+    LOAD 
+		*,
+		NUM(FLOOR($(parDateTimeField))) as [$(parDateTimeField)_Date_NUM_q],
+		TIME(FRAC($(parDateTimeField)), 'HH:mm:ss') as [$(parDateTimeField)_Time_q],
+	 	DATE(MONTHSTART($(parDateTimeField)), 'YYYYMM') as $(parDateTimeField)_YYYYMM;
+    SELECT * FROM "$(parDB_Owner)"."$(parDB_Table)"
+    WHERE $(parDateTimeField) >= TO_DATE('$(vMaxDate)', 'YYYYMMDD') AND $(parDateTimeField) <= TO_CHAR(ADD_MONTHS(SYSDATE,-0)) 
+    $(parDB_WHERE_Clause_Clean)
+    //DESC order of date to be stored in QVD
+    ORDER BY $(parDateTimeField) DESC;
+
+	LET parDB_NoofRows = NoofRows('$(parDB_Table)');
+
+    // 3c. Identify the MAX DateTime Field in order to store into a Delta QVD for next run.
+    [Max_$(parDateTimeField)]:
+    LOAD
+        DATE(DAYSTART(MAX($(parDateTimeField))), 'YYYYMMDD') as Max_$(parDateTimeField)
+    RESIDENT [$(parDB_Table)];
+
+	LET vScriptEndDB		= NOW();
+	LET vScriptDurationDB	= INTERVAL('$(vScriptEndDB)' - '$(vScriptStartDB)', 'HH:mm:ss');
+
+    /*  <---------------------- 4 - Store to QVDs  ---------------------->*/
+	//Sauvegarder dans dossier "4_Extract_QVD"
+	LET vScriptStartStore		= NOW();
+
+    // 4a. If the SFDC delta (change-data-capture) load table exists in the Qlik script and there is one record or more
+    IF NOT(ISNULL(TableNumber('$(parDB_Table)'))) AND ALT(NoOfRows('$(parDB_Table)'), 0) > 0 THEN
+
+        // 4b. Get the distinct values in the "DateTime Field_YYYYMM" to loop around
+        FOR Each FieldValue in FieldValueList('$(parDateTimeField)_YYYYMM')
+            DistinctFieldValues: LOAD '$(FieldValue)' as DistinctFieldValues AUTOGENERATE(1);
+        NEXT FieldValue;
+
+        // 4c. Loop through the distinct YYYYMM field values in order to generate the YYYYMM QVDs
+        FOR i=1 TO NoOfRows('DistinctFieldValues')
+            LET vDistinctFieldValues = PEEK('DistinctFieldValues', $(i)-1,'DistinctFieldValues');
+
+            // 4c-1. Check if the current YYYYMM QVD already exists... (or else if not re-building all QVDs)
+            IF ALT(QvdCreateTime('$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_$(vDistinctFieldValues).qvd'),0) > 0 AND  '$(vTableRebuild)' <> 'Yes' THEN
+                //... if the YYYYMM exists, load it distinct on the Primary Key ...
+                ExistingData: NOCONCATENATE LOAD * FROM [$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_$(vDistinctFieldValues).qvd] (QVD) WHERE NOT(EXISTS([$(parPrimaryKey)]));
+                //... and concatenate the "Delta" loaded from source to this one, before STORING the QVD.
+                SET vConcatenate = 'CONCATENATE(ExistingData)';
+            ELSE
+                //Otherwise, DISALLOW 'auto-concatenation' of the table. 
+                SET vConcatenate = 'NOCONCATENATE';
+            END IF;
+ 
+            ExistingData: $(vConcatenate) LOAD * RESIDENT [$(parDB_Table)] WHERE DATE($(parDateTimeField)_YYYYMM) = DATE#('$(vDistinctFieldValues)', 'YYYYMM');
+            //Now "empty" the vConcatenate variable for next value in loop, just in case.
+            SET vConcatenate = '';
+            //DROP the YYYYMM field value, as the QVD file name defines the YYYYMM of data, therefore this field is redundant.
+            DROP FIELD $(parDateTimeField)_YYYYMM FROM ExistingData;
+
+            //STORE THE DATA INTO THE QVD REVERSE CHRONOLOGICALLY SO THAT IT IS EASY TO PICK OUT THE LAST ("DateTime Field") VALUE FROM A QVD USING "WHERE NOT(EXISTS(Id))".
+            ExistingData_QVD: NOCONCATENATE LOAD * RESIDENT ExistingData ORDER BY $(parDateTimeField) DESC;
+            DROP TABLE ExistingData;        
+            STORE ExistingData_QVD INTO [$(parQVDTargetFolder)/$(parDB_Table)/$(parDB_Table)_$(vDistinctFieldValues).qvd](qvd);
+            DROP TABLE ExistingData_QVD;
+        NEXT i;
+
+        // 4d. Drop the support table containing the distinct YYYYMM field values in the currently loaded SFDC extract.
+        DROP TABLE DistinctFieldValues;
+        // 4e. Drop the delta loaded SFDC table from the script.
+        DROP TABLE [$(parDB_Table)];
+
+        // 4f. Once latest data QVD is written, then write Max_DateTime Field to file
+        STORE [Max_$(parDateTimeField)] INTO [$(parQVDTargetFolder)/_Delta/$(parDB_Table)_Max_$(parDateTimeField).qvd](qvd);
+        DROP TABLE [Max_$(parDateTimeField)];
+
+		LET vScriptEndStore			= NOW();
+		LET vScriptDurationStore	= INTERVAL('$(vScriptEndStore)' - '$(vScriptStartStore)', 'HH:mm:ss');
+
+		TableInfo:
+		LOAD
+			'$(parDB_Connection)'			as DB_LIB_Connection,
+			'$(parDB_Owner)'				as DB_Owner,
+			'$(parDB_Table)'				as DB_Table,
+			NUM('$(parDB_NoofRows)', '###,###,###,###') as DB_NoofRows,
+			'$(parDB_WHERE_ClauseFinal)'	as DB_WhereClause,
+			'$(vScriptDurationDB)'			as Extraction_Duree,
+			'$(vScriptStartDB)'				as Extraction_Debut,
+			'$(vScriptEndDB)'				as Extraction_Fin,
+			'$(vScriptDurationStore)'		as Store_Duree,
+			'$(vScriptStartStore)'			as Store_Debut,
+			'$(vScriptEndStore)'			as Store_Fin
+		AUTOGENERATE(1);
+    END IF;
+
+	//Blank-out the VARs for the next run
+	LET parDB_Owner = '';
+	LET parDB_Table = '';
+	LET parDateTimeField = '';
+	LET parDB_WHERE_Clause = '';
+    LET parDB_WHERE_Clause_Clean = '';
+end sub;
+
+
+// 17) Oracle_CreateYMSlices(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause,parQVDStartDate,parQVDEndDate)
+/*
+parametres de la sub-routine :
+parDB_Connection			--> Connection LIB a BDD.
+parDB_Owner					--> Nom de Owner/Schema de la BDD.
+parDB_Table					--> Nom de la table BDD.
+parDB_WHERE_Clause			--> WHERE-clause: doit commencer avec "AND" et tout guimets doivent etre remplaces par "|".
+parQVDStartDate				--> Date de debut, doit etre formatte date, e.g. MAKEDATE(2021,01,01).
+parQVDEndDate				--> Date de debut, doit etre formatte date, e.g. TODAY().
+
+Author:	Cheenu Janakiram
+Date:	19 Avril 2021
+*/
+sub Oracle_CreateYMSlices(parDB_Connection,parDB_Owner,parDB_Table,parDB_WHERE_Clause,parDateTimeField,parQVDStartDate,parQVDEndDate)
+	LET vQVDStartDate	= NUM($(parQVDStartDate));
+	LET vQVDEndDate		= NUM($(parQVDEndDate));
+
+    //Clean out the WHERE-Clause of single-quotes:
+    LET parDB_WHERE_Clause_Clean = REPLACE('$(parDB_WHERE_Clause)', '|', CHR(39));
+
+    CalValuesTemp:
+    LOAD
+        DATE(MONTHSTART($(vQVDStartDate) + ROWNO()-1), 'YYYYMM')			as QVDDate,
+        DATE(MONTHSTART($(vQVDStartDate) + ROWNO()-1), 'YYYYMMDD')			as MinDate,
+        DATE(DAYSTART(MONTHEND($(vQVDStartDate) + ROWNO()-1)), 'YYYYMMDD')	as MaxDate,
+        DATE($(vQVDStartDate) + ROWNO()-1, 'YYYYMMDD')						as CalValues
+    AUTOGENERATE(NUM($(vQVDEndDate)) - NUM($(vQVDStartDate))+1);
+
+    CalValues:
+    LOAD DISTINCT
+        MinDate,
+        MaxDate,
+        QVDDate
+    RESIDENT CalValuesTemp;
+
+    DROP TABLE CalValuesTemp;
+
+	LIB CONNECT TO '$(parDB_Connection)';
+	TRACE *** Connecte a la BDD: $(parDB_Connection) ***;
+    TRACE *** Pour prendre des donnees de "$(parDB_Owner)"."$(parDB_Table)" ***;
+    TRACE *** Avec la WHERE-Clause $(parDB_WHERE_Clause_Clean);
+
+    FOR i=1 TO NoOfRows('CalValues')
+        LET vMinDate = DATE(PEEK('MinDate', $(i)-1, 'CalValues'), 'YYYYMMDD');
+        LET vMaxDate = DATE(PEEK('MaxDate', $(i)-1, 'CalValues'), 'YYYYMMDD');
+        LET vQVDDate = DATE(PEEK('QVDDate', $(i)-1, 'CalValues'), 'YYYYMM');
+
+        TRACE *** Entre dates $(parDateTimeField) de $(vMinDate) a $(vMaxDate) ***;
+        TRACE *** Pour ecrire le QVD $(parDB_Table)_$(vQVDDate) ***;
+
+        [$(parDB_Table)]:
+        SELECT * FROM "$(parDB_Owner)"."$(parDB_Table)"
+        WHERE $(parDateTimeField) >= TO_DATE('$(vMinDate)', 'YYYYMMDD')
+        AND $(parDateTimeField) <= TO_DATE('$(vMaxDate)', 'YYYYMMDD') 
+        $(parDB_WHERE_Clause_Clean)
+        //DESC order of date to be stored in QVD
+        ORDER BY $(parDateTimeField) DESC;
+
+        STORE [$(parDB_Table)] INTO [lib://Folder_Qlik_Sense_PRD/4_Extract_QVD/$(parDB_Table)/$(parDB_Table)_$(vQVDDate).qvd] (qvd);
+        DROP TABLE [$(parDB_Table)];
+    NEXT i;
+
+    DROP TABLE CalValues;
+
+	sub MaxDateTemp
+		MaxDateTemp: LOAD [$(parDateTimeField)] as MaxDateTemp FROM [$(vQVDFileNamesList)] (QVD);
+	end sub
+	CALL QVDFileNamesLoad('lib://Folder_Qlik_Sense_PRD/4_Extract_QVD/$(parDB_Table)','$(parDB_Table)','1','MaxDateTemp');
+
+	[$(parDB_Table)_Max_$(parDateTimeField)]:
+	LOAD DATE(MAX(MaxDateTemp), 'YYYYMMDD') as [Max_$(parDateTimeField)] RESIDENT MaxDateTemp;
+	DROP TABLE MaxDateTemp;
+
+	STORE [$(parDB_Table)_Max_$(parDateTimeField)] INTO [lib://Folder_Qlik_Sense_PRD/4_Extract_QVD/_Delta/$(parDB_Table)_Max_$(parDateTimeField).qvd] (QVD);
+	DROP TABLE [$(parDB_Table)_Max_$(parDateTimeField)];
+end sub;
+
+
 // 999) QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
 /*<------ SUB: Create YYYYMM QVD Slices from a large QVD (this is a 'temp' sub to get you started on YYYYMM QVD slices ------>*/
 /*
 EXAMPLE of sub's CALL statement:
-CALL QVDCreateYMSlicesFromQVD('lib://QVDATA/SBI_QlikSense/','SBI-Extract-FC_User_Group','Extract_Date');
-
+CALL QVDCreateYMSlicesFromQVD('lib://QVDATA/SBI_QlikSense','SBI-Extract-FC_User_Group','Extract_Date');
 _______________________
 Rationale:
 _______________________
@@ -761,6 +1219,7 @@ Author:	Cheenu Janakiram
 Date:	12 September 2020
 */
 sub QVDCreateYMSlicesFromQVD(parSourceQVDFolder,parSourceQVDFile,parTargetFolder,parDateFieldNameToCreateQVDSlices)
+
 	Temp01: LOAD * FROM [$(parSourceQVDFolder)/$(parSourceQVDFile).qvd] (QVD);
 
 	Temp02: NOCONCATENATE LOAD *, DATE(MONTHSTART([$(parDateFieldNameToCreateQVDSlices)]), 'YYYYMM') as [$(parDateFieldNameToCreateQVDSlices)_YYYYMM] RESIDENT Temp01;
