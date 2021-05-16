@@ -355,7 +355,8 @@ sub User_Group_Temp
     LOAD
         User_Group_ID,
         Extract_Date
-    FROM [$(vQVDFileNamesList)] (QVD);
+    FROM [$(vQVDFileNamesList)] (QVD)
+    WHERE NOT(EXISTS(Primary_Key));
 end sub;
 
 CALL QVDFileNamesLoad('lib://QVDATA/SBI_QlikSense/dev_temp','SBI-Extract-FC_User_Group','1','User_Group_Temp');
