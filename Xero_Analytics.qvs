@@ -281,7 +281,7 @@ LOAD
 	IF(Category = 'Invoice', 'INV-' & SUBFIELD(SUBFIELD(Reference, 'INV-', 2), '|',1)) as [Invoice Number],
 	IF(Category = 'Invoice', 
 		IF(EXISTS(SneeClientList, Description) = -1, 'CJ', 'CS'),
-			PICK(WILDMATCH(Description, '*catherine*', '*cheenu*', '*sreenivasayyar*'), 'CS', 'CJ', 'CJ')) as Stream_Temp01,
+			PICK(WILDMATCH(Description, '*catherine*', '*cheenu*', '*chejan*', '*sreenivasayyar*'), 'CS', 'CJ', 'CJ', 'CJ')) as Stream_Temp01,
 	IF(Cost > 0,
 		IF(MATCH(Category, 'Salary', 'Pension', 'Dividend', 'Reimbursement of Expenses', 'VAT Payment', 'Corporate Tax') <> 0, 'Business Cost', 'Operational Cost')) as [Cost Type],
 	DUAL(SR_FiscalYearTemp & '-' & (SR_FiscalYearTemp+1), SR_FiscalYearTemp) as [Service Rendered Fiscal Year],
