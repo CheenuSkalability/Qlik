@@ -1,6 +1,6 @@
 TRACE ******  Loading the sub-routine for a Fully Automated Incremental Loading.  ******;
 /*
-Example of CALL:
+Example of CALL with all parameters:
 CALL FullyAutomatedIncrementalLoad('UDC_PRD_INFO_HISTO','INFOCENTRE','ODS_IMP_REGLEMENT','AND REGL_DAT_SUP IS NULL AND REGL_ID_REGL LIKE |H%|','REGL_ID_REGL','REGL_DAT_ECRI','YES');
 
 PARAMETERS you must set in this sub-routine:
